@@ -1,0 +1,433 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		464261DE2FDB957F0055FFC7 /* ResolveRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261CC2FDB957F0055FFC7 /* ResolveRemoteApp.swift */; };
+		464261DF2FDB957F0055FFC7 /* ShortcutGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D02FDB957F0055FFC7 /* ShortcutGrid.swift */; };
+		464261E02FDB957F0055FFC7 /* RemoteConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D72FDB957F0055FFC7 /* RemoteConnection.swift */; };
+		464261E12FDB957F0055FFC7 /* HapticsEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D32FDB957F0055FFC7 /* HapticsEngine.swift */; };
+		464261E22FDB957F0055FFC7 /* ModeSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261CF2FDB957F0055FFC7 /* ModeSelector.swift */; };
+		464261E32FDB957F0055FFC7 /* TransportBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D12FDB957F0055FFC7 /* TransportBar.swift */; };
+		464261E42FDB957F0055FFC7 /* Command.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D52FDB957F0055FFC7 /* Command.swift */; };
+		464261E52FDB957F0055FFC7 /* HapticWheelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261CE2FDB957F0055FFC7 /* HapticWheelView.swift */; };
+		464261E62FDB957F0055FFC7 /* EditModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261DA2FDB957F0055FFC7 /* EditModeView.swift */; };
+		464261E72FDB957F0055FFC7 /* ConnectionPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D92FDB957F0055FFC7 /* ConnectionPanelView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		464261BE2FDB95580055FFC7 /* ResolveRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ResolveRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		464261CC2FDB957F0055FFC7 /* ResolveRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResolveRemoteApp.swift; sourceTree = "<group>"; };
+		464261CE2FDB957F0055FFC7 /* HapticWheelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticWheelView.swift; sourceTree = "<group>"; };
+		464261CF2FDB957F0055FFC7 /* ModeSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelector.swift; sourceTree = "<group>"; };
+		464261D02FDB957F0055FFC7 /* ShortcutGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutGrid.swift; sourceTree = "<group>"; };
+		464261D12FDB957F0055FFC7 /* TransportBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportBar.swift; sourceTree = "<group>"; };
+		464261D32FDB957F0055FFC7 /* HapticsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsEngine.swift; sourceTree = "<group>"; };
+		464261D52FDB957F0055FFC7 /* Command.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Command.swift; sourceTree = "<group>"; };
+		464261D72FDB957F0055FFC7 /* RemoteConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnection.swift; sourceTree = "<group>"; };
+		464261D92FDB957F0055FFC7 /* ConnectionPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionPanelView.swift; sourceTree = "<group>"; };
+		464261DA2FDB957F0055FFC7 /* EditModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditModeView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		464261BB2FDB95580055FFC7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		464261B52FDB95580055FFC7 = {
+			isa = PBXGroup;
+			children = (
+				464261DD2FDB957F0055FFC7 /* iOS */,
+				464261BF2FDB95580055FFC7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		464261BF2FDB95580055FFC7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				464261BE2FDB95580055FFC7 /* ResolveRemote.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		464261CD2FDB957F0055FFC7 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				464261CC2FDB957F0055FFC7 /* ResolveRemoteApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		464261D22FDB957F0055FFC7 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				464261CE2FDB957F0055FFC7 /* HapticWheelView.swift */,
+				464261CF2FDB957F0055FFC7 /* ModeSelector.swift */,
+				464261D02FDB957F0055FFC7 /* ShortcutGrid.swift */,
+				464261D12FDB957F0055FFC7 /* TransportBar.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		464261D42FDB957F0055FFC7 /* Haptics */ = {
+			isa = PBXGroup;
+			children = (
+				464261D32FDB957F0055FFC7 /* HapticsEngine.swift */,
+			);
+			path = Haptics;
+			sourceTree = "<group>";
+		};
+		464261D62FDB957F0055FFC7 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				464261D52FDB957F0055FFC7 /* Command.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		464261D82FDB957F0055FFC7 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				464261D72FDB957F0055FFC7 /* RemoteConnection.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		464261DB2FDB957F0055FFC7 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				464261D92FDB957F0055FFC7 /* ConnectionPanelView.swift */,
+				464261DA2FDB957F0055FFC7 /* EditModeView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		464261DC2FDB957F0055FFC7 /* ResolveRemote */ = {
+			isa = PBXGroup;
+			children = (
+				464261CD2FDB957F0055FFC7 /* App */,
+				464261D22FDB957F0055FFC7 /* Components */,
+				464261D42FDB957F0055FFC7 /* Haptics */,
+				464261D62FDB957F0055FFC7 /* Models */,
+				464261D82FDB957F0055FFC7 /* Networking */,
+				464261DB2FDB957F0055FFC7 /* Views */,
+			);
+			path = ResolveRemote;
+			sourceTree = "<group>";
+		};
+		464261DD2FDB957F0055FFC7 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				464261DC2FDB957F0055FFC7 /* ResolveRemote */,
+			);
+			name = iOS;
+			path = ../iOS;
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		464261BD2FDB95580055FFC7 /* ResolveRemote */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 464261C92FDB95590055FFC7 /* Build configuration list for PBXNativeTarget "ResolveRemote" */;
+			buildPhases = (
+				464261BA2FDB95580055FFC7 /* Sources */,
+				464261BB2FDB95580055FFC7 /* Frameworks */,
+				464261BC2FDB95580055FFC7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ResolveRemote;
+			packageProductDependencies = (
+			);
+			productName = ResolveRemote;
+			productReference = 464261BE2FDB95580055FFC7 /* ResolveRemote.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		464261B62FDB95580055FFC7 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					464261BD2FDB95580055FFC7 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+				};
+			};
+			buildConfigurationList = 464261B92FDB95580055FFC7 /* Build configuration list for PBXProject "ResolveRemote" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 464261B52FDB95580055FFC7;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 464261BF2FDB95580055FFC7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				464261BD2FDB95580055FFC7 /* ResolveRemote */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		464261BC2FDB95580055FFC7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		464261BA2FDB95580055FFC7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				464261DE2FDB957F0055FFC7 /* ResolveRemoteApp.swift in Sources */,
+				464261DF2FDB957F0055FFC7 /* ShortcutGrid.swift in Sources */,
+				464261E02FDB957F0055FFC7 /* RemoteConnection.swift in Sources */,
+				464261E12FDB957F0055FFC7 /* HapticsEngine.swift in Sources */,
+				464261E22FDB957F0055FFC7 /* ModeSelector.swift in Sources */,
+				464261E32FDB957F0055FFC7 /* TransportBar.swift in Sources */,
+				464261E42FDB957F0055FFC7 /* Command.swift in Sources */,
+				464261E52FDB957F0055FFC7 /* HapticWheelView.swift in Sources */,
+				464261E62FDB957F0055FFC7 /* EditModeView.swift in Sources */,
+				464261E72FDB957F0055FFC7 /* ConnectionPanelView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		464261C72FDB95590055FFC7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = X9UJWN3373;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		464261C82FDB95590055FFC7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = X9UJWN3373;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		464261CA2FDB95590055FFC7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X9UJWN3373;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Lloyd.ResolveRemote;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		464261CB2FDB95590055FFC7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X9UJWN3373;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Lloyd.ResolveRemote;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		464261B92FDB95580055FFC7 /* Build configuration list for PBXProject "ResolveRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				464261C72FDB95590055FFC7 /* Debug */,
+				464261C82FDB95590055FFC7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		464261C92FDB95590055FFC7 /* Build configuration list for PBXNativeTarget "ResolveRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				464261CA2FDB95590055FFC7 /* Debug */,
+				464261CB2FDB95590055FFC7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 464261B62FDB95580055FFC7 /* Project object */;
+}
