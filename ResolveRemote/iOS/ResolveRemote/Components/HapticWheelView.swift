@@ -1,18 +1,33 @@
 import SwiftUI
 
-/// A circular jog wheel. Dragging a finger around the wheel emits integer
-/// ticks through `onTick` — clockwise is positive, counter-clockwise is
-/// negative — and fires local haptics for each detent.
+/// A circular wheel with three behaviours:
+///
+/// - JOG:     circular drag emits integer ticks (clockwise positive) via
+///            `onTick`. 1 detent = 1 frame.
+/// - SCRUB:   same gesture as jog, but each detent's ticks are multiplied by
+///            `scrubMultiplier` for fast travel.
+/// - SHUTTLE: the wheel acts like a spring-loaded shuttle ring. Deflection
+///            from the touch-down point maps to a speed level -3...+3
+///            (0 = stop). `onShuttle` fires only when the level changes, and
+///            on release the wheel snaps back to centre and sends level 0.
 struct HapticWheelView: View {
+    var mode: WheelMode = .jog
     /// Sensitivity multiplier from the speed slider. 1.0 = one tick per
     /// `baseDetentDegrees` of rotation; higher = more ticks per turn.
     var speed: Double = 1.0
-    /// Called whenever one or more detents accumulate.
+    /// Called in JOG/SCRUB whenever one or more detents accumulate.
     var onTick: (Int) -> Void
+    /// Called in SHUTTLE when the speed level changes.
+    var onShuttle: (Int) -> Void = { _ in }
 
     // MARK: - Tunables
     /// Degrees of finger rotation per tick at speed 1.0.
     private let baseDetentDegrees: Double = 12
+    /// Frames per detent in SCRUB mode.
+    private let scrubMultiplier = 10
+    /// Degrees of deflection per shuttle level.
+    private let shuttleLevelDegrees: Double = 30
+    private let maxShuttleLevel = 3
     private let notchCount = 24
 
     // MARK: - Gesture state
@@ -20,6 +35,8 @@ struct HapticWheelView: View {
     @State private var accumulated: Double = 0  // radians since the last tick
     @State private var lastDirection = 0        // +1 clockwise, -1 counter-clockwise
     @State private var visualRotation: Double = 0 // degrees, for the spinning ring
+    @State private var shuttleDeflection: Double = 0 // radians from touch-down
+    @State private var shuttleLevel = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -39,8 +56,7 @@ struct HapticWheelView: View {
                         ))
                     }
                     .onEnded { _ in
-                        lastAngle = nil
-                        accumulated = 0
+                        handleRelease()
                     }
             )
         }
@@ -80,10 +96,18 @@ struct HapticWheelView: View {
             .fill(Color(white: 0.13))
             .frame(width: size * 0.42, height: size * 0.42)
             .overlay(Circle().strokeBorder(Color(white: 0.28), lineWidth: 1))
-        Text("JOG")
+        Text(hubLabel)
             .font(.caption2.bold())
             .foregroundColor(Color(white: 0.5))
             .tracking(3)
+    }
+
+    /// In shuttle mode the hub shows the live speed level.
+    private var hubLabel: String {
+        if mode == .shuttle && shuttleLevel != 0 {
+            return shuttleLevel > 0 ? "+\(shuttleLevel)" : "\(shuttleLevel)"
+        }
+        return mode.rawValue
     }
 
     // MARK: - Gesture handling
@@ -91,7 +115,7 @@ struct HapticWheelView: View {
     private func handleDrag(_ value: DragGesture.Value, size: CGFloat, offset: CGPoint) {
         // Angle of the touch around the wheel centre. With screen coordinates
         // (y grows downward), atan2 increases clockwise — which matches the
-        // "clockwise = forward = positive ticks" convention we want.
+        // "clockwise = forward = positive" convention we want.
         let center = CGPoint(x: offset.x + size / 2, y: offset.y + size / 2)
         let angle = Double(atan2(value.location.y - center.y, value.location.x - center.x))
 
@@ -103,6 +127,15 @@ struct HapticWheelView: View {
         if delta > .pi { delta -= 2 * .pi }
         if delta < -.pi { delta += 2 * .pi }
 
+        switch mode {
+        case .jog, .scrub:
+            handleJogDelta(delta)
+        case .shuttle:
+            handleShuttleDelta(delta)
+        }
+    }
+
+    private func handleJogDelta(_ delta: Double) {
         accumulated += delta
         visualRotation += delta * 180 / .pi
 
@@ -119,12 +152,50 @@ struct HapticWheelView: View {
         }
         lastDirection = direction
 
-        onTick(ticks)
+        onTick(mode == .scrub ? ticks * scrubMultiplier : ticks)
+    }
+
+    private func handleShuttleDelta(_ delta: Double) {
+        shuttleDeflection += delta
+
+        // Clamp the visual deflection just past the last level so the wheel
+        // feels like it hits an end stop.
+        let maxRadians = (shuttleLevelDegrees * .pi / 180) * Double(maxShuttleLevel) * 1.15
+        shuttleDeflection = min(max(shuttleDeflection, -maxRadians), maxRadians)
+        visualRotation = shuttleDeflection * 180 / .pi
+
+        let levelRadians = shuttleLevelDegrees * .pi / 180
+        let rawLevel = Int((shuttleDeflection / levelRadians).rounded(.towardZero))
+        let level = min(max(rawLevel, -maxShuttleLevel), maxShuttleLevel)
+
+        if level != shuttleLevel {
+            shuttleLevel = level
+            HapticsEngine.shared.heavyBump()
+            onShuttle(level)
+        }
+    }
+
+    private func handleRelease() {
+        lastAngle = nil
+        accumulated = 0
+
+        if mode == .shuttle {
+            // Spring back to centre and stop playback.
+            shuttleDeflection = 0
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                visualRotation = 0
+            }
+            if shuttleLevel != 0 {
+                shuttleLevel = 0
+                HapticsEngine.shared.heavyBump()
+                onShuttle(0)
+            }
+        }
     }
 }
 
 #Preview {
-    HapticWheelView(speed: 1.0) { _ in }
+    HapticWheelView(mode: .jog, speed: 1.0, onTick: { _ in }, onShuttle: { _ in })
         .padding()
         .background(Color.black)
 }

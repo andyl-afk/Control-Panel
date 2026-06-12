@@ -15,6 +15,8 @@ struct Command: Decodable {
     let cmd: String
     /// Optional tick count, used by "jog". Negative = backwards, positive = forwards.
     let ticks: Int?
+    /// Optional shuttle speed level, used by "shuttle". -3..+3, 0 = stop.
+    let level: Int?
     /// Timestamp from the iPhone (seconds since 1970). Optional so a missing
     /// field never kills an otherwise valid command.
     let ts: Double?
@@ -30,6 +32,7 @@ enum KnownCommand: String {
     case step_right
     case shuttle_left
     case shuttle_right
+    case shuttle
     case blade
     case ripple_delete
     case marker

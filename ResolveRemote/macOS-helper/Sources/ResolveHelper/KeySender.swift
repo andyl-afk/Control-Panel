@@ -21,36 +21,48 @@ final class KeySender {
         case rightArrow
         case upArrow
         case downArrow
+        case forwardDelete
         case i
         case o
         case m
         case z
+        case j
+        case k
+        case l
 
         var code: CGKeyCode {
             switch self {
-            case .space:      return 49  // kVK_Space
-            case .leftArrow:  return 123 // kVK_LeftArrow
-            case .rightArrow: return 124 // kVK_RightArrow
-            case .upArrow:    return 126 // kVK_UpArrow
-            case .downArrow:  return 125 // kVK_DownArrow
-            case .i:          return 34  // kVK_ANSI_I
-            case .o:          return 31  // kVK_ANSI_O
-            case .m:          return 46  // kVK_ANSI_M
-            case .z:          return 6   // kVK_ANSI_Z
+            case .space:         return 49  // kVK_Space
+            case .leftArrow:     return 123 // kVK_LeftArrow
+            case .rightArrow:    return 124 // kVK_RightArrow
+            case .upArrow:       return 126 // kVK_UpArrow
+            case .downArrow:     return 125 // kVK_DownArrow
+            case .forwardDelete: return 117 // kVK_ForwardDelete
+            case .i:             return 34  // kVK_ANSI_I
+            case .o:             return 31  // kVK_ANSI_O
+            case .m:             return 46  // kVK_ANSI_M
+            case .z:             return 6   // kVK_ANSI_Z
+            case .j:             return 38  // kVK_ANSI_J
+            case .k:             return 40  // kVK_ANSI_K
+            case .l:             return 37  // kVK_ANSI_L
             }
         }
 
         var description: String {
             switch self {
-            case .space:      return "Space"
-            case .leftArrow:  return "Left Arrow"
-            case .rightArrow: return "Right Arrow"
-            case .upArrow:    return "Up Arrow"
-            case .downArrow:  return "Down Arrow"
-            case .i:          return "I"
-            case .o:          return "O"
-            case .m:          return "M"
-            case .z:          return "Z"
+            case .space:         return "Space"
+            case .leftArrow:     return "Left Arrow"
+            case .rightArrow:    return "Right Arrow"
+            case .upArrow:       return "Up Arrow"
+            case .downArrow:     return "Down Arrow"
+            case .forwardDelete: return "Forward Delete"
+            case .i:             return "I"
+            case .o:             return "O"
+            case .m:             return "M"
+            case .z:             return "Z"
+            case .j:             return "J"
+            case .k:             return "K"
+            case .l:             return "L"
             }
         }
     }
@@ -60,24 +72,25 @@ final class KeySender {
         AXIsProcessTrusted()
     }
 
-    /// Press-and-release `key` `times` times, optionally holding Command.
-    func tap(_ key: Key, times: Int = 1, command: Bool = false) {
+    /// Press-and-release `key` `times` times, optionally holding modifiers
+    /// (e.g. `.maskCommand`, `.maskShift`).
+    func tap(_ key: Key, times: Int = 1, modifiers: CGEventFlags = []) {
         guard times > 0 else { return }
         for _ in 0..<times {
-            press(key, command: command)
+            press(key, modifiers: modifiers)
         }
     }
 
-    private func press(_ key: Key, command: Bool) {
+    private func press(_ key: Key, modifiers: CGEventFlags) {
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: key.code, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: key.code, keyDown: false)
         else {
             print("[keys] failed to create CGEvent for \(key)")
             return
         }
-        if command {
-            down.flags = .maskCommand
-            up.flags = .maskCommand
+        if !modifiers.isEmpty {
+            down.flags = modifiers
+            up.flags = modifiers
         }
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)

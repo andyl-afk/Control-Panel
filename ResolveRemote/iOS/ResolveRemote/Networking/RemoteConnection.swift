@@ -89,7 +89,7 @@ final class RemoteConnection: ObservableObject {
     // MARK: - Sending
 
     /// Encode and send one command. No-op when not connected.
-    func send(cmd: String, ticks: Int? = nil) {
+    func send(cmd: String, ticks: Int? = nil, level: Int? = nil) {
         guard isConnected, let connection else { return }
 
         seq += 1
@@ -99,6 +99,7 @@ final class RemoteConnection: ObservableObject {
             mode: "edit",
             cmd: cmd,
             ticks: ticks,
+            level: level,
             ts: Date().timeIntervalSince1970
         )
         guard var data = try? encoder.encode(command) else { return }

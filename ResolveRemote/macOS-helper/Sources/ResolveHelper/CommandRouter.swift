@@ -25,7 +25,8 @@ final class CommandRouter {
         }
 
         let ticksText = command.ticks.map { " ticks=\($0)" } ?? ""
-        print("[cmd] seq=\(command.seq) mode=\(command.mode) cmd=\(command.cmd)\(ticksText)")
+        let levelText = command.level.map { " level=\($0)" } ?? ""
+        print("[cmd] seq=\(command.seq) mode=\(command.mode) cmd=\(command.cmd)\(ticksText)\(levelText)")
 
         route(command)
     }
@@ -70,7 +71,31 @@ final class CommandRouter {
             perform("press O") { self.keySender.tap(.o) }
 
         case .undo:
-            perform("press Command-Z") { self.keySender.tap(.z, command: true) }
+            perform("press Command-Z") { self.keySender.tap(.z, modifiers: .maskCommand) }
+
+        // Premiere-style keymap in Resolve: Cmd-K = blade/add edit,
+        // Shift-ForwardDelete = ripple delete.
+        case .blade:
+            perform("press Command-K") { self.keySender.tap(.k, modifiers: .maskCommand) }
+
+        case .ripple_delete:
+            perform("press Shift-Forward Delete") { self.keySender.tap(.forwardDelete, modifiers: .maskShift) }
+
+        // J/K/L shuttle. In Resolve each L press speeds forward playback up
+        // one step, each J one step backward, K stops.
+        case .shuttle:
+            let level = command.level ?? 0
+            if level == 0 {
+                perform("press K (shuttle stop)") { self.keySender.tap(.k) }
+            } else {
+                let key: KeySender.Key = level > 0 ? .l : .j
+                perform("shuttle level \(level): press K then \(key) x\(abs(level))") {
+                    // K first so the level is absolute, not stacked on top of
+                    // whatever speed Resolve was already playing at.
+                    self.keySender.tap(.k)
+                    self.keySender.tap(key, times: abs(level))
+                }
+            }
 
         // Resolve's default keys for previous/next edit point are Up/Down
         // Arrow, which is a safe non-destructive default.
@@ -80,11 +105,10 @@ final class CommandRouter {
         case .next_edit:
             perform("press Down Arrow") { self.keySender.tap(.downArrow) }
 
-        // No key mapping yet in Phase 1. Blade (Cmd-B) and Ripple Delete
-        // (Shift-Delete) modify the timeline, so they stay log-only until we
-        // wire them up deliberately. Shuttle needs J/K/L state tracking.
-        case .blade, .ripple_delete, .shuttle_left, .shuttle_right:
-            print("  -> \(known.rawValue): no key mapping in Phase 1 (log only)")
+        // The transport <</>> buttons still send these; the wheel's SHUTTLE
+        // mode uses the "shuttle" command above instead.
+        case .shuttle_left, .shuttle_right:
+            print("  -> \(known.rawValue): no key mapping (log only)")
         }
     }
 

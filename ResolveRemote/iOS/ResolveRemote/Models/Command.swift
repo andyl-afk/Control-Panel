@@ -11,6 +11,7 @@ struct Command: Encodable {
     let mode: String
     let cmd: String
     let ticks: Int?
+    let level: Int?
     let ts: Double
 }
 
@@ -24,6 +25,7 @@ enum CommandName {
     static let stepRight = "step_right"
     static let shuttleLeft = "shuttle_left"
     static let shuttleRight = "shuttle_right"
+    static let shuttle = "shuttle"
     static let blade = "blade"
     static let rippleDelete = "ripple_delete"
     static let marker = "marker"

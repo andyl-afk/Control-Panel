@@ -24,10 +24,16 @@ struct EditModeView: View {
 
                 speedSlider
 
-                // Phase 1: all wheel modes behave like jog.
-                HapticWheelView(speed: speed) { ticks in
-                    connection.send(cmd: CommandName.jog, ticks: ticks)
-                }
+                HapticWheelView(
+                    mode: wheelMode,
+                    speed: speed,
+                    onTick: { ticks in
+                        connection.send(cmd: CommandName.jog, ticks: ticks)
+                    },
+                    onShuttle: { level in
+                        connection.send(cmd: CommandName.shuttle, level: level)
+                    }
+                )
                 .frame(maxWidth: 320, maxHeight: 320)
                 .opacity(connection.isConnected ? 1 : 0.55)
 

@@ -31,8 +31,8 @@ iPhone app  --TCP, newline-delimited JSON-->  macOS helper  -->  log command
 - No accounts, cloud, or sync.
 - No iPad layouts.
 - No raw USB APIs.
-- Blade, Ripple Delete, and Shuttle are **log-only** on the helper for now
-  (the buttons exist and the commands arrive; key mappings come later).
+- The `<<`/`>>` transport buttons (shuttle_left/shuttle_right) are **log-only**
+  on the helper; the wheel's SHUTTLE mode uses J/K/L instead.
 
 ## Repo layout
 

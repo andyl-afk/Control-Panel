@@ -26,6 +26,22 @@ done with the helper in dry-run mode.
   Rotate clockwise → `cmd=jog` with positive ticks. Counter-clockwise →
   negative ticks. Higher Speed slider → more ticks for the same rotation.
 
+- [ ] **Keyboard dismisses.**
+  Tap the IP or port field so the keyboard appears. Tapping "Done" in the
+  keyboard toolbar dismisses it; tapping Connect also dismisses it.
+
+- [ ] **Scrub mode moves ~10 frames per detent.**
+  Select SCRUB and rotate the wheel: each detent sends `cmd=jog` with
+  ticks multiplied by 10 (e.g. `ticks=10` / `ticks=-10`), so in send-keys
+  mode the playhead moves about 10 frames per detent.
+
+- [ ] **Shuttle mode holds playback speed and stops on release.**
+  Select SHUTTLE and rotate-and-hold: the helper logs `cmd=shuttle` with
+  `level=` -3..+3, only when the level changes, with a heavy haptic bump
+  per change. In send-keys mode each level presses K then J/L repeats
+  (Resolve J/K/L shuttle), so playback holds that speed. Releasing the
+  wheel snaps it back to centre and sends `level=0` (K = stop).
+
 - [ ] **Bad JSON does not crash helper.**
   `printf 'this is not json\n{"broken\n' | nc localhost 49321`
   Helper logs "ignoring malformed JSON" twice and keeps serving.
@@ -45,7 +61,8 @@ done with the helper in dry-run mode.
   Open a timeline in Resolve, click into it. From the phone: play/pause
   toggles playback, step buttons and jog move the playhead, M drops a
   marker, I/O set in/out points, Prev/Next Edit (Up/Down arrow) jump
-  between edit points, Undo undoes.
+  between edit points, Undo undoes, Blade fires Cmd+K (add edit on the
+  Premiere-style keymap), Ripple fires Shift+ForwardDelete (ripple delete).
 
 - [ ] **Haptics fire locally on iPhone.**
   Wheel rotation gives a light tick per detent, reversing direction gives a

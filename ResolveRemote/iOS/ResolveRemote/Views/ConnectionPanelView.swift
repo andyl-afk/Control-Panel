@@ -5,8 +5,14 @@ import SwiftUI
 struct ConnectionPanelView: View {
     @EnvironmentObject private var connection: RemoteConnection
 
+    private enum Field {
+        case host
+        case port
+    }
+
     @State private var host = ""
     @State private var portText = "49321"
+    @FocusState private var focusedField: Field?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -18,6 +24,7 @@ struct ConnectionPanelView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .textFieldStyle(.plain)
+                    .focused($focusedField, equals: .host)
                     .padding(8)
                     .background(Color(white: 0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -25,6 +32,7 @@ struct ConnectionPanelView: View {
                 TextField("Port", text: $portText)
                     .keyboardType(.numberPad)
                     .textFieldStyle(.plain)
+                    .focused($focusedField, equals: .port)
                     .padding(8)
                     .frame(width: 72)
                     .background(Color(white: 0.12))
@@ -56,6 +64,14 @@ struct ConnectionPanelView: View {
                 Spacer()
             }
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    focusedField = nil
+                }
+            }
+        }
     }
 
     private var buttonTitle: String {
@@ -81,6 +97,7 @@ struct ConnectionPanelView: View {
     }
 
     private func toggleConnection() {
+        focusedField = nil
         HapticsEngine.shared.buttonTap()
         switch connection.state {
         case .connected, .connecting:
