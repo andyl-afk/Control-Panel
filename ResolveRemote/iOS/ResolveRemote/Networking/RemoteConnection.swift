@@ -229,7 +229,14 @@ final class RemoteConnection: ObservableObject {
         switch reply.cmd {
         case "color_state":
             guard let state = try? decoder.decode(ColorState.self, from: lineData) else { return }
-            DispatchQueue.main.async { self.colorState = state }
+            DispatchQueue.main.async {
+                // Status polling re-sends identical states every 2 s — only
+                // publish real changes so polling never causes re-renders,
+                // haptics, or flashes.
+                if self.colorState != state {
+                    self.colorState = state
+                }
+            }
         case "preset_list":
             let presets = reply.presets ?? []
             DispatchQueue.main.async { self.presets = presets }

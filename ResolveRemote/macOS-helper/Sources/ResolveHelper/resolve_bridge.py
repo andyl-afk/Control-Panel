@@ -314,7 +314,6 @@ class ColorEngine:
         self.session = ResolveSession()
         self.states = {}            # (clip unique id, node index) -> params dict
         self.active_node = 1        # stepper-selected node, clamped per clip
-        self.node_count = 1         # GetNumNodes() of the current clip
         self.last_available = None  # tri-state: None / True / False
         self.bypassed_node = None   # node index currently bypassed, or None
         # Bypass runs on the reader thread, applies on the worker — one lock
@@ -326,14 +325,18 @@ class ColorEngine:
         key = (item.GetUniqueId(), self.active_node)
         return self.states.setdefault(key, fresh_state())
 
-    def refresh_node_count(self, item):
-        """Re-read the clip's node count and clamp the active node into it
-        (the playhead may have moved to a clip with a smaller tree)."""
-        self.node_count = self._node_count(item)
-        if self.active_node > self.node_count:
-            self.active_node = self.node_count
+    def fresh_node_count(self, item):
+        """Fresh GetNumNodes() for this single operation — node counts and
+        graph handles are NEVER cached beyond one command, so nodes added or
+        deleted in Resolve are seen immediately. Clamps the active node down
+        if the tree shrank."""
+        count = self._node_count(item)
+        if self.active_node > count:
+            log("active node clamped %d -> %d (tree shrank)" % (self.active_node, count))
+            self.active_node = count
         if self.active_node < 1:
             self.active_node = 1
+        return count
 
     def _node_count(self, item):
         try:
@@ -416,19 +419,23 @@ class ColorEngine:
             self.announce(False, reason=reason, force=wants_status)
             return
 
-        self.refresh_node_count(item)
-        state = self.state_for(item)
         changed = False
         node_switched = False
+        state = None
 
         for cmd in mutating:
             name = cmd.get("cmd")
+            # Freshness rule: re-read the node tree for EVERY command and
+            # re-point the working state — the user may add/delete nodes in
+            # Resolve at any moment.
+            node_count = self.fresh_node_count(item)
+            state = self.state_for(item)
             if name == "set_node":
                 try:
                     requested = int(cmd.get("index") or 1)
                 except (TypeError, ValueError):
                     requested = 1
-                self.active_node = min(max(requested, 1), self.node_count)
+                self.active_node = min(max(requested, 1), node_count)
                 # Later commands in this batch land on the new node.
                 state = self.state_for(item)
                 node_switched = True
@@ -490,7 +497,7 @@ class ColorEngine:
             else:
                 log("unknown colour command: %r" % name)
 
-        if changed:
+        if changed and state is not None:
             # Grading while bypassed would be invisible and confusing — make
             # sure the bypassed node is back on before the next apply.
             if self.bypassed_node is not None and self._set_node_enabled(item, self.bypassed_node, True):
@@ -501,7 +508,7 @@ class ColorEngine:
                               reason="Resolve rejected SetCDL on node %d" % self.active_node)
                 return
 
-        self.announce(True, item=item, state=state,
+        self.announce(True, item=item,
                       force=changed or wants_status or node_switched)
 
     # -- look presets ---------------------------------------------------------
@@ -565,9 +572,7 @@ class ColorEngine:
         self.states = {
             key: value for key, value in self.states.items() if key[0] != uid
         }
-        self.refresh_node_count(item)
-        state = self.state_for(item)
-        self.announce(True, item=item, state=state, force=True)
+        self.announce(True, item=item, force=True)
         emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": True})
         log("applied preset %r" % name)
         return True
@@ -599,12 +604,16 @@ class ColorEngine:
             self.session.resolve = None
             return False
 
-    def announce(self, available, item=None, state=None, reason=None, force=False):
-        """Emit color_state when availability flips, or when forced."""
+    def announce(self, available, item=None, reason=None, force=False):
+        """Emit color_state when availability flips, or when forced. Node
+        count and the working state are re-derived fresh at emission time —
+        nothing cached — so the phone always sees the live node tree."""
         if not force and available == self.last_available:
             return
         self.last_available = available
         if available:
+            node_count = self.fresh_node_count(item)
+            state = self.state_for(item)
             clip_name = "?"
             try:
                 clip_name = item.GetName()
@@ -620,7 +629,7 @@ class ColorEngine:
                 "available": True,
                 "clip": clip_name,
                 "node": self.active_node,
-                "node_count": self.node_count,
+                "node_count": node_count,
                 "lift": round(state["lift_m"], 6),
                 "gamma": round(state["gamma_m"], 6),
                 "gain": round(state["gain_m"], 6),

@@ -81,6 +81,19 @@ struct ColorModeView: View {
             requestStatus()
             requestPresets()
         }
+        .task {
+            // Poll color_status while this tab is visible and connected, so
+            // node_count/node/clip stay current when the user adds nodes or
+            // moves the playhead without grading. The task is cancelled
+            // automatically when the tab is hidden. Unchanged states are
+            // deduped upstream, so polling causes no haptics or flashes.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if connection.isConnected {
+                    requestStatus()
+                }
+            }
+        }
         .onChange(of: connection.isConnected) { _, connected in
             if connected {
                 requestStatus()

@@ -37,5 +37,21 @@ serial nodes on the Color page first).
   Grade two nodes, close and reopen the project: both nodes' grades are
   still on the clip.
 
+## Phase 8.1 — node freshness
+
+- [ ] **Added nodes appear without phone interaction.**
+  With the Colour tab open and connected, add a node in Resolve: within
+  ~2 s the stepper updates (e.g. 1/1 → 1/2) with no taps, no haptics,
+  and no visual flashing.
+
+- [ ] **Fresh targeting.**
+  Step to node 2, adjust gain: Resolve's node 2 thumbnail changes,
+  node 1 untouched.
+
+- [ ] **Deleted node clamps safely.**
+  Delete node 2 in Resolve while the app targets it: within ~2 s the
+  stepper clamps to 1/1, and the next adjustment lands on node 1 with no
+  errors in the helper log.
+
 - [ ] **Full regression.**
   Phase 1–7 checklists pass.
