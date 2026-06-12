@@ -1,10 +1,9 @@
-import ApplicationServices
 import Foundation
+import ResolveHelperKit
 
-// ResolveHelper — Phase 1 bridge between the Resolve Remote iPhone app and
-// DaVinci Resolve. Listens for newline-delimited JSON commands over TCP and
-// either logs them (dry-run, the default) or turns them into keyboard events
-// (--send-keys).
+// ResolveHelper — developer CLI for the Resolve Remote bridge. All real
+// logic lives in ResolveHelperKit (shared with the menu bar app); this is a
+// thin argument-parsing wrapper. See DEVELOPMENT.md.
 
 let defaultPort: UInt16 = 49321
 
@@ -47,62 +46,28 @@ while index < args.count {
     index += 1
 }
 
-// MARK: - Local IP discovery (so the startup banner can tell you what to type
-// into the iPhone app)
-
-func localIPv4Addresses() -> [(interface: String, address: String)] {
-    var results: [(String, String)] = []
-    var ifaddrsPointer: UnsafeMutablePointer<ifaddrs>?
-    guard getifaddrs(&ifaddrsPointer) == 0, let first = ifaddrsPointer else {
-        return results
-    }
-    defer { freeifaddrs(ifaddrsPointer) }
-
-    var pointer: UnsafeMutablePointer<ifaddrs>? = first
-    while let current = pointer {
-        let ifa = current.pointee
-        pointer = ifa.ifa_next
-
-        guard let sockaddr = ifa.ifa_addr,
-              sockaddr.pointee.sa_family == UInt8(AF_INET) else { continue }
-        let name = String(cString: ifa.ifa_name)
-        guard name != "lo0" else { continue }
-
-        var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-        if getnameinfo(sockaddr, socklen_t(sockaddr.pointee.sa_len),
-                       &host, socklen_t(host.count),
-                       nil, 0, NI_NUMERICHOST) == 0 {
-            results.append((name, String(cString: host)))
-        }
-    }
-    return results
-}
-
 // MARK: - Startup banner
 
 print("""
 
-ResolveHelper — Resolve Remote Phase 1
-======================================
-Mode: \(sendKeys ? "SEND-KEYS (keyboard events will be sent to the frontmost app!)" : "DRY-RUN (commands are logged only; pass --send-keys to send keys)")
-Port: \(port)
+ResolveHelper — Resolve Remote (developer CLI)
+==============================================
+Mode: \(sendKeys ? "SEND-KEYS (keyboard events will be sent!)" : "DRY-RUN (commands are logged only; pass --send-keys to send keys)")
+Port: \(port)  (advertised over Bonjour as _resolveremote._tcp)
 """)
 
-let addresses = localIPv4Addresses()
+let addresses = HelperCore.localIPv4Addresses()
 if addresses.isEmpty {
     print("Local IP: could not detect — try `ipconfig getifaddr en0` in another terminal")
 } else {
-    print("Enter one of these IPs in the iPhone app:")
+    print("Manual-IP fallback addresses:")
     for entry in addresses {
         print("  \(entry.address)  (\(entry.interface))")
     }
 }
 
 if sendKeys {
-    // Keyboard control needs the Accessibility permission. We warn but keep
-    // running — granting the permission doesn't require a restart of macOS,
-    // though you may need to restart this helper afterwards.
-    if KeySender.isTrusted() {
+    if HelperCore.isAccessibilityTrusted {
         print("Accessibility: granted — keyboard events will work")
     } else {
         print("""
@@ -122,24 +87,14 @@ print("\nWaiting for commands (Ctrl-C to quit)…\n")
 
 // MARK: - Run
 
-let keySender = KeySender()
-let colorBridge = ColorBridge()
-let router = CommandRouter(sendKeys: sendKeys, keySender: keySender, colorBridge: colorBridge)
-let server = CommandServer(port: port, router: router)
-
-// Sidecar replies (color_state) go to every connected phone.
-colorBridge.onOutput = { line in
-    server.broadcast(line: line)
+let core = HelperCore(port: port, sendKeys: sendKeys)
+core.onServerError = { message in
+    print("[server] fatal: \(message)")
+    exit(1)
 }
-// If a phone vanishes mid hold-to-compare, re-enable the node so a grade is
-// never left silently bypassed (the sidecar no-ops when not bypassed).
-server.onClientDisconnected = {
-    colorBridge.send(line: #"{"v":1,"seq":0,"mode":"color","cmd":"bypass","enabled":true}"#)
-}
-colorBridge.start()
 
 do {
-    try server.start()
+    try core.start()
 } catch {
     print("[server] failed to start: \(error)")
     exit(1)

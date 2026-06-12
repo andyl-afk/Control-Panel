@@ -3,7 +3,8 @@ import Foundation
 /// Decodes incoming JSON lines, logs every command, and (in send-keys mode)
 /// dispatches them to `KeySender`.
 final class CommandRouter {
-    private let sendKeys: Bool
+    /// Live-toggleable: the menu bar app flips this for dry-run mode.
+    var sendKeys: Bool
     private let keySender: KeySender
     private let colorBridge: ColorBridge
     private let decoder = JSONDecoder()

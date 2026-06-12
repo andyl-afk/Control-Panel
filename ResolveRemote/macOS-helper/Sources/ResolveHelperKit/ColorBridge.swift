@@ -20,6 +20,7 @@ final class ColorBridge {
 
     private var process: Process?
     private var stdinHandle: FileHandle?
+    private var stopping = false
     private let queue = DispatchQueue(label: "resolve-helper.sidecar")
     private var stdoutBuffer = Data()
     private var stderrBuffer = Data()
@@ -27,7 +28,24 @@ final class ColorBridge {
     /// Spawn the sidecar up front so its first Resolve connection attempt
     /// happens at helper startup, not on the first wheel movement.
     func start() {
-        queue.async { self.spawnIfNeeded() }
+        queue.async {
+            self.stopping = false
+            self.spawnIfNeeded()
+        }
+    }
+
+    /// Terminate the sidecar (helper quitting). Belt and braces: if the
+    /// helper ever dies without reaching this, the sidecar notices its
+    /// stdin pipe closing and exits by itself — it can't be orphaned.
+    func stop() {
+        queue.async {
+            self.stopping = true
+            self.stdinHandle = nil
+            if let process = self.process, process.isRunning {
+                process.terminate()
+            }
+            self.process = nil
+        }
     }
 
     /// Forward one raw JSON line (already newline-stripped) to the sidecar.
@@ -100,9 +118,10 @@ final class ColorBridge {
             guard let self else { return }
             self.queue.async {
                 guard self.process === finished else { return }
-                print("[sidecar] exited (status \(finished.terminationStatus)) — will respawn on the next colour command")
                 self.process = nil
                 self.stdinHandle = nil
+                guard !self.stopping else { return } // expected during quit
+                print("[sidecar] exited (status \(finished.terminationStatus)) — will respawn on the next colour command")
                 self.emitUnavailable("Colour sidecar stopped — try again")
             }
         }

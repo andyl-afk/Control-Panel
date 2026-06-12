@@ -5,6 +5,7 @@ import SwiftUI
 /// just where the fields moved.
 struct SettingsView: View {
     @EnvironmentObject private var connection: RemoteConnection
+    @EnvironmentObject private var browser: BonjourBrowser
 
     private enum Field {
         case host
@@ -14,6 +15,8 @@ struct SettingsView: View {
     // Same keys ResolveRemoteApp uses for auto-connect.
     @AppStorage("hostIP") private var host = ""
     @AppStorage("portText") private var portText = "49321"
+    /// Last-used Bonjour service; auto-connect prefers it when discoverable.
+    @AppStorage("preferredServiceName") private var preferredServiceName = ""
     // Read by HapticsEngine.
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
     @AppStorage("hapticIntensity") private var hapticIntensity = "medium"
@@ -26,6 +29,42 @@ struct SettingsView: View {
             VStack(spacing: 14) {
                 TrackedLabel(text: "SETTINGS", size: 13, color: Theme.textPrimary)
                     .frame(height: 44)
+
+                section("NEARBY MACS") {
+                    if browser.discovered.isEmpty {
+                        Text("Searching for Macs running the helper…")
+                            .font(.caption)
+                            .foregroundColor(Theme.textSecondary)
+                    } else {
+                        ForEach(browser.discovered) { mac in
+                            HStack {
+                                Image(systemName: "desktopcomputer")
+                                    .font(.caption)
+                                    .foregroundColor(mac.name == preferredServiceName
+                                                     ? Theme.colorAccent : Theme.textSecondary)
+                                Text(mac.name)
+                                    .font(.footnote)
+                                    .foregroundColor(Theme.textPrimary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Button {
+                                    HapticsEngine.shared.buttonTap()
+                                    preferredServiceName = mac.name
+                                    connection.connect(serviceNamed: mac.name, endpoint: mac.endpoint)
+                                } label: {
+                                    Text("Connect")
+                                        .font(.caption.bold())
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 7)
+                                        .background(Theme.colorAccent)
+                                        .foregroundColor(.black)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
 
                 section("CONNECTION") {
                     HStack(spacing: 8) {
@@ -121,6 +160,9 @@ struct SettingsView: View {
                 }
             }
         }
+        // Browse only while this tab is visible.
+        .onAppear { browser.acquire("settings") }
+        .onDisappear { browser.release("settings") }
     }
 
     // MARK: - Pieces
@@ -167,6 +209,8 @@ struct SettingsView: View {
         case .connected, .connecting, .reconnecting:
             connection.disconnect()
         case .disconnected, .error:
+            // Manual connect makes manual IP the preference again.
+            preferredServiceName = ""
             connection.connect(host: host, port: UInt16(portText) ?? 49321)
         }
     }

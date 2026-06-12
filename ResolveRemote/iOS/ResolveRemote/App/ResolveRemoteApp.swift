@@ -3,16 +3,19 @@ import SwiftUI
 @main
 struct ResolveRemoteApp: App {
     @StateObject private var connection = RemoteConnection()
+    @StateObject private var browser = BonjourBrowser()
     @Environment(\.scenePhase) private var scenePhase
 
     // Shared with SettingsView via the same keys.
     @AppStorage("hostIP") private var savedHost = ""
     @AppStorage("portText") private var savedPortText = "49321"
+    @AppStorage("preferredServiceName") private var preferredServiceName = ""
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(connection)
+                .environmentObject(browser)
                 .preferredColorScheme(.dark)
         }
         .onChange(of: scenePhase) { _, phase in
@@ -30,14 +33,41 @@ struct ResolveRemoteApp: App {
         }
     }
 
-    private func autoConnectIfNeeded() {
-        guard !savedHost.isEmpty else { return }
-        // Don't stomp on a live or in-progress connection.
+    private var isIdle: Bool {
         switch connection.state {
-        case .disconnected, .error:
-            connection.connect(host: savedHost, port: UInt16(savedPortText) ?? 49321)
-        case .connecting, .reconnecting, .connected:
-            break
+        case .disconnected, .error: return true
+        case .connecting, .reconnecting, .connected: return false
+        }
+    }
+
+    /// Auto-connect preference: the last-used Bonjour service if it shows
+    /// up within a short discovery window, else the last-used manual IP.
+    private func autoConnectIfNeeded() {
+        guard isIdle else { return }
+
+        guard !preferredServiceName.isEmpty else {
+            if !savedHost.isEmpty {
+                connection.connect(host: savedHost, port: UInt16(savedPortText) ?? 49321)
+            }
+            return
+        }
+
+        browser.acquire("launch")
+        Task { @MainActor in
+            defer { browser.release("launch") }
+            // Wait up to ~2.5 s for the preferred Mac to be discovered.
+            for _ in 0..<10 {
+                guard isIdle else { return } // user connected meanwhile
+                if let endpoint = browser.endpoint(named: preferredServiceName) {
+                    connection.connect(serviceNamed: preferredServiceName, endpoint: endpoint)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            // Not discoverable right now — fall back to the manual IP.
+            if isIdle, !savedHost.isEmpty {
+                connection.connect(host: savedHost, port: UInt16(savedPortText) ?? 49321)
+            }
         }
     }
 }

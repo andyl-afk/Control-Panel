@@ -45,7 +45,7 @@ final class RemoteConnection: ObservableObject {
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
-    var hasEndpoint: Bool { host != nil }
+    var hasEndpoint: Bool { target != nil }
 
     private var connection: NWConnection?
     private var seq = 0
@@ -54,9 +54,15 @@ final class RemoteConnection: ObservableObject {
     private let decoder = JSONDecoder()
     private var receiveBuffer = Data()
 
+    /// What we connect (and reconnect) to: a manually entered host/port, or
+    /// a Bonjour service endpoint — the latter re-resolves on every attempt.
+    private enum Target {
+        case manual(host: String, port: UInt16)
+        case service(name: String, endpoint: NWEndpoint)
+    }
+
     // Reconnect policy
-    private var host: String?
-    private var port: UInt16 = 49321
+    private var target: Target?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
     private let reconnectDelay: TimeInterval = 2
@@ -72,9 +78,17 @@ final class RemoteConnection: ObservableObject {
             setState(.error("Enter the Mac's IP address"))
             return
         }
+        begin(target: .manual(host: trimmedHost, port: port))
+    }
 
-        self.host = trimmedHost
-        self.port = port
+    /// Connect to a Bonjour-discovered helper. The service endpoint is
+    /// resolved by Network.framework — no IP handling needed.
+    func connect(serviceNamed name: String, endpoint: NWEndpoint) {
+        begin(target: .service(name: name, endpoint: endpoint))
+    }
+
+    private func begin(target: Target) {
+        self.target = target
         cancelPendingReconnect()
         reconnectAttempts = 0
         DispatchQueue.main.async { self.lastError = nil }
@@ -151,14 +165,24 @@ final class RemoteConnection: ObservableObject {
     private func open(asReconnect: Bool) {
         teardown()
 
-        guard let host, let nwPort = NWEndpoint.Port(rawValue: port) else {
-            setState(.error("Invalid port"))
+        guard let target else {
+            setState(.error("No connection target"))
             return
         }
 
         setState(asReconnect ? .reconnecting : .connecting)
 
-        let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        let connection: NWConnection
+        switch target {
+        case .manual(let host, let port):
+            guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+                setState(.error("Invalid port"))
+                return
+            }
+            connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        case .service(_, let endpoint):
+            connection = NWConnection(to: endpoint, using: .tcp)
+        }
         self.connection = connection
 
         connection.stateUpdateHandler = { [weak self] nwState in

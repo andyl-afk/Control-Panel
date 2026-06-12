@@ -14,6 +14,10 @@ final class CommandServer {
     /// Fired whenever a client connection ends (cleanly or not). Used to make
     /// sure a hold-to-compare bypass can't outlive the phone that started it.
     var onClientDisconnected: (() -> Void)?
+    /// Fired (on the server queue) whenever the connected-client count changes.
+    var onClientCountChanged: ((Int) -> Void)?
+    /// Fired when the listener fails (e.g. port already in use).
+    var onListenerFailed: ((String) -> Void)?
 
     init(port: UInt16, router: CommandRouter) {
         self.port = NWEndpoint.Port(rawValue: port)!
@@ -36,14 +40,21 @@ final class CommandServer {
         let listener = try NWListener(using: .tcp, on: port)
         self.listener = listener
 
-        listener.stateUpdateHandler = { [port] state in
+        // Advertise over Bonjour so phones can discover this Mac by name —
+        // no IP entry needed on the same network.
+        listener.service = NWListener.Service(
+            name: Host.current().localizedName ?? "Mac",
+            type: "_resolveremote._tcp"
+        )
+
+        listener.stateUpdateHandler = { [weak self, port] state in
             switch state {
             case .ready:
-                print("[server] listening on port \(port)")
+                print("[server] listening on port \(port) (Bonjour: _resolveremote._tcp)")
             case .failed(let error):
                 print("[server] listener failed: \(error)")
                 print("[server] is another copy of the helper already running?")
-                exit(1)
+                self?.onListenerFailed?("Listener failed: \(error)")
             default:
                 break
             }
@@ -56,10 +67,24 @@ final class CommandServer {
         listener.start(queue: queue)
     }
 
+    /// Stop listening and drop all clients.
+    func stop() {
+        queue.async {
+            self.listener?.cancel()
+            self.listener = nil
+            for connection in self.connections.values {
+                connection.cancel()
+            }
+            self.connections.removeAll()
+            self.onClientCountChanged?(0)
+        }
+    }
+
     private func accept(_ connection: NWConnection) {
         let id = nextClientID
         nextClientID += 1
         connections[id] = connection
+        onClientCountChanged?(connections.count)
         print("[server] client #\(id) connected (\(connection.endpoint))")
 
         connection.stateUpdateHandler = { [weak self] state in
@@ -70,8 +95,10 @@ final class CommandServer {
             case .cancelled:
                 print("[server] client #\(id) disconnected")
                 self?.queue.async {
-                    self?.connections.removeValue(forKey: id)
-                    self?.onClientDisconnected?()
+                    guard let self else { return }
+                    self.connections.removeValue(forKey: id)
+                    self.onClientCountChanged?(self.connections.count)
+                    self.onClientDisconnected?()
                 }
             default:
                 break
