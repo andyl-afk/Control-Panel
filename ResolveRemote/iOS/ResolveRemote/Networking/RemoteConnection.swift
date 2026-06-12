@@ -102,16 +102,20 @@ final class RemoteConnection: ObservableObject {
             level: level,
             ts: Date().timeIntervalSince1970
         )
-        guard var data = try? encoder.encode(command) else { return }
-        data.append(UInt8(ascii: "\n"))
+        // Encode and send on the connection's queue so callers (gesture
+        // handlers, timers) never block on JSON work.
+        queue.async { [encoder] in
+            guard var data = try? encoder.encode(command) else { return }
+            data.append(UInt8(ascii: "\n"))
 
-        connection.send(content: data, completion: .contentProcessed { [weak self] error in
-            guard let self, self.connection === connection else { return }
-            if let error {
-                self.setState(.error(Self.describe(error)))
-                connection.cancel()
-            }
-        })
+            connection.send(content: data, completion: .contentProcessed { [weak self] error in
+                guard let self, self.connection === connection else { return }
+                if let error {
+                    self.setState(.error(Self.describe(error)))
+                    connection.cancel()
+                }
+            })
+        }
     }
 
     // MARK: - Private

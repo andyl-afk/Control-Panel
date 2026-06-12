@@ -64,6 +64,18 @@ done with the helper in dry-run mode.
   between edit points, Undo undoes, Blade fires Cmd+K (add edit on the
   Premiere-style keymap), Ripple fires Shift+ForwardDelete (ripple delete).
 
+- [ ] **Buttons work without touching the Mac first.**
+  With Resolve running (not necessarily frontmost), connect and immediately
+  press play/pause, In, Out, Prev Edit, Next Edit from the phone — they hit
+  Resolve directly (events are posted to Resolve's PID), no need to click
+  into Resolve or touch the Mac keyboard first.
+
+- [ ] **Fast wheel spins track smoothly.**
+  Spin the wheel hard and continuously: the playhead keeps up, and when you
+  stop, Resolve stops with no backlog of queued steps playing out (ticks
+  are batched into at most 30 messages per second, with the remainder
+  flushed on release).
+
 - [ ] **Haptics fire locally on iPhone.**
   Wheel rotation gives a light tick per detent, reversing direction gives a
   sharper tick, every button gives a tap. (Real device only — the Simulator

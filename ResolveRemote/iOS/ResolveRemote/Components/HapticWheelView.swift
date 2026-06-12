@@ -29,6 +29,9 @@ struct HapticWheelView: View {
     private let shuttleLevelDegrees: Double = 30
     private let maxShuttleLevel = 3
     private let notchCount = 24
+    /// Jog/scrub ticks are batched and flushed at most this often, and local
+    /// tick haptics are capped at the same rate during fast spins.
+    private let flushesPerSecond: Double = 30
 
     // MARK: - Gesture state
     @State private var lastAngle: Double?       // radians, previous drag sample
@@ -37,6 +40,11 @@ struct HapticWheelView: View {
     @State private var visualRotation: Double = 0 // degrees, for the spinning ring
     @State private var shuttleDeflection: Double = 0 // radians from touch-down
     @State private var shuttleLevel = 0
+
+    // MARK: - Tick batching
+    @State private var pendingTicks = 0
+    @State private var flushTimer: Timer?
+    @State private var lastTickHapticAt: TimeInterval = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -144,15 +152,44 @@ struct HapticWheelView: View {
         guard ticks != 0 else { return }
         accumulated -= Double(ticks) * detentRadians
 
+        // During fast spins, a haptic per detent floods the Taptic Engine —
+        // cap ticks to the flush rate. Direction changes always get felt.
         let direction = ticks > 0 ? 1 : -1
+        let now = Date.timeIntervalSinceReferenceDate
         if lastDirection != 0 && direction != lastDirection {
             HapticsEngine.shared.directionChange()
-        } else {
+            lastTickHapticAt = now
+        } else if now - lastTickHapticAt >= 1.0 / flushesPerSecond {
             HapticsEngine.shared.wheelTick()
+            lastTickHapticAt = now
         }
         lastDirection = direction
 
-        onTick(mode == .scrub ? ticks * scrubMultiplier : ticks)
+        // Batch instead of sending one message per detent; the timer flushes
+        // the sum at most `flushesPerSecond` times a second.
+        pendingTicks += mode == .scrub ? ticks * scrubMultiplier : ticks
+        startFlushTimerIfNeeded()
+    }
+
+    // MARK: - Tick batching
+
+    private func startFlushTimerIfNeeded() {
+        guard flushTimer == nil else { return }
+        flushTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / flushesPerSecond, repeats: true) { _ in
+            flushPendingTicks()
+        }
+    }
+
+    private func flushPendingTicks() {
+        guard pendingTicks != 0 else { return }
+        let ticks = pendingTicks
+        pendingTicks = 0
+        onTick(ticks)
+    }
+
+    private func stopFlushTimer() {
+        flushTimer?.invalidate()
+        flushTimer = nil
     }
 
     private func handleShuttleDelta(_ delta: Double) {
@@ -178,6 +215,10 @@ struct HapticWheelView: View {
     private func handleRelease() {
         lastAngle = nil
         accumulated = 0
+
+        // Flush straight away so the final ticks aren't delayed by the timer.
+        flushPendingTicks()
+        stopFlushTimer()
 
         if mode == .shuttle {
             // Spring back to centre and stop playback.

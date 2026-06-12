@@ -18,8 +18,9 @@ iPhone app  --TCP, newline-delimited JSON-->  macOS helper  -->  log command
 - A macOS command-line helper (`ResolveHelper`) that listens on TCP port
   **49321**, decodes JSON commands, and logs them.
 - An optional `--send-keys` mode where the helper sends real keyboard events
-  (Space, arrows, I, O, M, Cmd-Z, …) to the frontmost app — i.e. DaVinci
-  Resolve when Resolve is frontmost.
+  (Space, arrows, I, O, M, Cmd-Z, …) directly to DaVinci Resolve when it's
+  running (it doesn't need to be frontmost), or to the frontmost app when
+  Resolve isn't running (handy for TextEdit testing).
 - Manual IP entry. Works over normal Wi-Fi, or over USB-C networking /
   Personal Hotspot, because the app just connects to a host IP and port.
 
@@ -145,7 +146,8 @@ The app just connects to an IP, so any network path works:
 ## 6. Testing key sending
 
 1. Run `swift run ResolveHelper --send-keys` (Accessibility granted).
-2. **Start with TextEdit**, not Resolve: open TextEdit, make it frontmost,
+2. **Start with TextEdit**, not Resolve (quit Resolve first — when it's
+   running the helper targets it directly): open TextEdit, make it frontmost,
    then press Marker/In/Out on the phone — `m`, `i`, `o` should appear; the
    step buttons move the cursor; play/pause types spaces.
 3. Then switch to DaVinci Resolve, make it frontmost, and the same buttons
@@ -160,7 +162,7 @@ The app just connects to an IP, so any network path works:
 | App says "Timed out" / "Host unreachable" | Wrong IP, or phone and Mac are on different networks. Re-check the IP the helper printed. |
 | Connects but nothing in Resolve | You're in dry-run mode — restart with `--send-keys`. |
 | `--send-keys` but no keys arrive anywhere | Accessibility permission missing — grant it and restart the helper. |
-| Keys go to the wrong app | CGEvent sends to the *frontmost* app. Click on Resolve first. |
+| Keys go to the wrong app | When Resolve is running, keys are sent straight to it. When it isn't, keys go to the *frontmost* app — quit Resolve fully if you're trying to test in TextEdit. |
 | "listener failed" at startup | Port already in use — another helper is running, or pass `--port`. |
 | First connect prompt never appeared / connection blocked | iOS Settings → Privacy & Security → Local Network → enable ResolveRemote. Also check the Mac's firewall (System Settings → Network → Firewall) isn't blocking incoming connections. |
 | Helper was restarted | The app shows an error state; tap Connect again. |
