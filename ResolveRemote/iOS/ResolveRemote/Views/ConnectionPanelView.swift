@@ -1,7 +1,11 @@
 import SwiftUI
 
-/// Top panel for entering the Mac helper's IP/port and managing the
-/// connection.
+/// Compact connection header shared by the Edit and Colour tabs.
+///
+/// Collapsed (default): one slim row — status dot, host:port, and the
+/// current clip name. Tapping the row expands the full panel (IP/port
+/// fields, Connect button, error text); tapping the dot or connecting
+/// collapses it again. Expansion state is shared across tabs.
 struct ConnectionPanelView: View {
     @EnvironmentObject private var connection: RemoteConnection
 
@@ -14,13 +18,68 @@ struct ConnectionPanelView: View {
     // auto-connect (ResolveRemoteApp reads the same keys).
     @AppStorage("hostIP") private var host = ""
     @AppStorage("portText") private var portText = "49321"
+    // Shared across tabs so the header looks the same on both.
+    @AppStorage("connHeaderExpanded") private var expanded = false
     @FocusState private var focusedField: Field?
 
     var body: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                statusDot
+            collapsedRow
 
+            if expanded {
+                expandedPanel
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    focusedField = nil
+                }
+            }
+        }
+    }
+
+    // MARK: - Collapsed row
+
+    private var collapsedRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                expanded = false
+            } label: {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 10, height: 10)
+                    .frame(width: 28, height: 28) // keep an easy hit area
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+
+            Text(host.isEmpty ? "no host" : "\(host):\(portText)")
+                .font(.caption2.monospaced())
+                .foregroundColor(Color(white: 0.6))
+                .lineLimit(1)
+                .layoutPriority(1)
+
+            Text(connection.colorState?.clip ?? "")
+                .font(.caption2)
+                .foregroundColor(Color(white: 0.45))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            expanded = true
+        }
+    }
+
+    // MARK: - Expanded panel
+
+    private var expandedPanel: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
                 TextField("Mac IP (e.g. 192.168.1.20)", text: $host)
                     .keyboardType(.numbersAndPunctuation)
                     .autocorrectionDisabled()
@@ -66,15 +125,9 @@ struct ConnectionPanelView: View {
                 Spacer()
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    focusedField = nil
-                }
-            }
-        }
     }
+
+    // MARK: - Helpers
 
     private var buttonTitle: String {
         switch connection.state {
@@ -90,7 +143,7 @@ struct ConnectionPanelView: View {
     private var statusColor: Color {
         switch connection.state {
         case .connected:                  return .green
-        case .connecting, .reconnecting:  return .yellow
+        case .connecting, .reconnecting:  return .orange
         case .disconnected:               return .gray
         case .error:                      return .red
         }
@@ -105,12 +158,6 @@ struct ConnectionPanelView: View {
         }
     }
 
-    private var statusDot: some View {
-        Circle()
-            .fill(statusColor)
-            .frame(width: 10, height: 10)
-    }
-
     private func toggleConnection() {
         focusedField = nil
         HapticsEngine.shared.buttonTap()
@@ -120,6 +167,7 @@ struct ConnectionPanelView: View {
         case .disconnected, .error:
             let port = UInt16(portText) ?? 49321
             connection.connect(host: host, port: port)
+            expanded = false // connecting collapses the header
         }
     }
 }

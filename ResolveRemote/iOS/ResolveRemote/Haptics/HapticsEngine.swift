@@ -29,8 +29,17 @@ final class HapticsEngine {
         tapGenerator.prepare()
     }
 
-    /// One jog wheel detent.
+    /// Minimum gap between wheel-tick haptics. The cap is global — three
+    /// wheels and five knobs can be touched at once, but the Taptic Engine
+    /// shouldn't be flooded past ~30 ticks/second in total.
+    private let minTickInterval: TimeInterval = 1.0 / 30.0
+    private var lastTickAt: TimeInterval = 0
+
+    /// One detent on a wheel or knob (rate-capped globally).
     func wheelTick() {
+        let now = Date.timeIntervalSinceReferenceDate
+        guard now - lastTickAt >= minTickInterval else { return }
+        lastTickAt = now
         tickGenerator.impactOccurred(intensity: 0.7)
         tickGenerator.prepare()
     }

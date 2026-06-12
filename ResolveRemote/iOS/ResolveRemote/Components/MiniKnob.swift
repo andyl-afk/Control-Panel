@@ -53,11 +53,11 @@ struct MiniKnob: View {
             .gesture(drag)
 
             Text(label)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 8, weight: .bold))
                 .tracking(1)
                 .foregroundColor(Color(white: 0.55))
             Text(value.map { String(format: "%.2f", $0) } ?? "—")
-                .font(.caption2.monospacedDigit())
+                .font(.system(size: 10, weight: .regular).monospacedDigit())
                 .foregroundColor(.white)
         }
     }

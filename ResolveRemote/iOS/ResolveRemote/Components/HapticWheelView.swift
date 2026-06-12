@@ -15,8 +15,15 @@ struct HapticWheelView: View {
     /// Sensitivity multiplier from the speed slider. 1.0 = one tick per
     /// `baseDetentDegrees` of rotation; higher = more ticks per turn.
     var speed: Double = 1.0
-    /// Optional hub label override (Colour Mode shows the active target).
+    /// Optional hub label override (Colour Mode shows the wheel's target).
     var hubText: String?
+    /// Optional accent for the ring border and the value indicator tick
+    /// (Colour Mode: red/green/blue per target). Nil keeps the neutral look.
+    var accent: Color?
+    /// Externally driven indicator angle in degrees (0 = 12 o'clock).
+    /// Colour Mode derives this from the parameter value, so resets and
+    /// preset applies snap it back without any internal state to drift.
+    var indicatorAngle: Double = 0
     /// Called in JOG/SCRUB whenever one or more detents accumulate.
     var onTick: (Int) -> Void
     /// Called in SHUTTLE when the speed level changes.
@@ -31,9 +38,6 @@ struct HapticWheelView: View {
     private let shuttleLevelDegrees: Double = 30
     private let maxShuttleLevel = 3
     private let notchCount = 24
-    /// Jog/scrub ticks are batched and flushed at most this often, and local
-    /// tick haptics are capped at the same rate during fast spins.
-    private let flushesPerSecond: Double = 30
 
     // MARK: - Gesture state
     @State private var lastAngle: Double?       // radians, previous drag sample
@@ -45,7 +49,6 @@ struct HapticWheelView: View {
 
     // MARK: - Tick batching
     @State private var batcher = TickBatcher()
-    @State private var lastTickHapticAt: TimeInterval = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -86,7 +89,17 @@ struct HapticWheelView: View {
                     endRadius: size * 0.55
                 )
             )
-            .overlay(Circle().strokeBorder(Color(white: 0.3), lineWidth: 2))
+            .overlay(Circle().strokeBorder(accent?.opacity(0.55) ?? Color(white: 0.3), lineWidth: 2))
+
+        // Value indicator: a thin tick on the ring showing how far off
+        // neutral the parameter is (12 o'clock = default).
+        if let accent {
+            Capsule()
+                .fill(accent)
+                .frame(width: 3, height: size * 0.07)
+                .offset(y: -size * 0.465)
+                .rotationEffect(.degrees(indicatorAngle))
+        }
 
         // Rotating notch ring — purely visual feedback that the wheel "moves".
         ZStack {
@@ -153,16 +166,14 @@ struct HapticWheelView: View {
         guard ticks != 0 else { return }
         accumulated -= Double(ticks) * detentRadians
 
-        // During fast spins, a haptic per detent floods the Taptic Engine —
-        // cap ticks to the flush rate. Direction changes always get felt.
+        // Direction changes always get felt; plain ticks are rate-capped
+        // globally inside HapticsEngine (matters when several wheels/knobs
+        // are touched at once).
         let direction = ticks > 0 ? 1 : -1
-        let now = Date.timeIntervalSinceReferenceDate
         if lastDirection != 0 && direction != lastDirection {
             HapticsEngine.shared.directionChange()
-            lastTickHapticAt = now
-        } else if now - lastTickHapticAt >= 1.0 / flushesPerSecond {
+        } else {
             HapticsEngine.shared.wheelTick()
-            lastTickHapticAt = now
         }
         lastDirection = direction
 
