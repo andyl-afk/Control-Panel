@@ -75,9 +75,8 @@ CLAMP_CH_OFFSET = (-1.0, 1.0)
 # between are summed and applied together. Bypass skips this limiter.
 MAX_APPLIES_PER_SECOND = 30.0
 
-# We only ever touch node 1.
+# Default node when no set_node has been received yet.
 NODE_INDEX = "1"
-NODE_NUMBER = 1  # integer form for SetNodeEnabled
 
 # Look presets: every .drx file in this folder is a preset; the filename
 # (without extension) is the button name on the phone. The folder is the
@@ -175,7 +174,7 @@ def _balance_weights(vec):
     return magnitude, (w_r, w_g, w_b)
 
 
-def compose_cdl(params):
+def compose_cdl(params, node_index=NODE_INDEX):
     """Pure function: user parameters -> SetCDL payload dict.
 
     Composition order (per spec):
@@ -223,7 +222,7 @@ def compose_cdl(params):
         return "%.6f %.6f %.6f" % tuple(values)
 
     return {
-        "NodeIndex": NODE_INDEX,
+        "NodeIndex": node_index,
         "Slope": triplet(slope),
         "Offset": triplet(offset),
         "Power": triplet(power),
@@ -313,44 +312,70 @@ class ResolveSession:
 class ColorEngine:
     def __init__(self):
         self.session = ResolveSession()
-        self.states = {}            # clip unique id -> dict like USER_DEFAULTS
-        self.current_uid = None
+        self.states = {}            # (clip unique id, node index) -> params dict
+        self.active_node = 1        # stepper-selected node, clamped per clip
+        self.node_count = 1         # GetNumNodes() of the current clip
         self.last_available = None  # tri-state: None / True / False
-        self.node_bypassed = False  # last known bypass state of node 1
+        self.bypassed_node = None   # node index currently bypassed, or None
         # Bypass runs on the reader thread, applies on the worker — one lock
         # guards all Resolve API access.
         self.lock = threading.Lock()
 
     def state_for(self, item):
-        uid = item.GetUniqueId()
-        if uid != self.current_uid:
-            self.current_uid = uid
-            self.states.setdefault(uid, fresh_state())
-        return self.states[self.current_uid]
+        """Shadow state for (current clip, active node)."""
+        key = (item.GetUniqueId(), self.active_node)
+        return self.states.setdefault(key, fresh_state())
+
+    def refresh_node_count(self, item):
+        """Re-read the clip's node count and clamp the active node into it
+        (the playhead may have moved to a clip with a smaller tree)."""
+        self.node_count = self._node_count(item)
+        if self.active_node > self.node_count:
+            self.active_node = self.node_count
+        if self.active_node < 1:
+            self.active_node = 1
+
+    def _node_count(self, item):
+        try:
+            graph = item.GetNodeGraph()
+            if graph is not None:
+                # The bridge returns None (not AttributeError) for methods
+                # the running Resolve doesn't have — check callability.
+                getter = getattr(graph, "GetNumNodes", None)
+                if callable(getter):
+                    count = getter()
+                    if isinstance(count, (int, float)) and count >= 1:
+                        return int(count)
+        except Exception as exc:
+            log("GetNumNodes failed: %s" % exc)
+        return 1
 
     # -- bypass (hold-to-compare) -------------------------------------------
 
     def handle_bypass(self, enabled):
         """Called directly from the reader thread; must feel instant."""
         with self.lock:
-            if enabled and not self.node_bypassed:
+            if enabled and self.bypassed_node is None:
                 return  # idempotent: nothing to re-enable
             _, item, reason = self.session.current_context()
             if item is None:
                 log("bypass ignored: %s" % reason)
                 return
-            if self._set_node_enabled(item, enabled):
-                self.node_bypassed = not enabled
-                log("node %d %s" % (NODE_NUMBER, "enabled" if enabled else "bypassed"))
+            # Re-enable targets whichever node was bypassed, even if the
+            # stepper has moved since.
+            node = self.bypassed_node if enabled else self.active_node
+            if self._set_node_enabled(item, node, enabled):
+                self.bypassed_node = None if enabled else node
+                log("node %d %s" % (node, "enabled" if enabled else "bypassed"))
 
-    def _set_node_enabled(self, item, enabled):
+    def _set_node_enabled(self, item, node, enabled):
         try:
             # Re-fetch the graph every call — cheap, and avoids stale handles.
             graph = item.GetNodeGraph()
             if graph is None:
                 log("bypass failed: clip has no node graph")
                 return False
-            return bool(graph.SetNodeEnabled(NODE_NUMBER, enabled))
+            return bool(graph.SetNodeEnabled(node, enabled))
         except Exception as exc:
             log("SetNodeEnabled failed: %s" % exc)
             return False
@@ -391,12 +416,23 @@ class ColorEngine:
             self.announce(False, reason=reason, force=wants_status)
             return
 
+        self.refresh_node_count(item)
         state = self.state_for(item)
         changed = False
+        node_switched = False
 
         for cmd in mutating:
             name = cmd.get("cmd")
-            if name == "color_delta":
+            if name == "set_node":
+                try:
+                    requested = int(cmd.get("index") or 1)
+                except (TypeError, ValueError):
+                    requested = 1
+                self.active_node = min(max(requested, 1), self.node_count)
+                # Later commands in this batch land on the new node.
+                state = self.state_for(item)
+                node_switched = True
+            elif name == "color_delta":
                 target = WHEEL_TARGETS.get(cmd.get("target"))
                 if target is None:
                     log("unknown color_delta target: %r" % cmd.get("target"))
@@ -456,15 +492,17 @@ class ColorEngine:
 
         if changed:
             # Grading while bypassed would be invisible and confusing — make
-            # sure node 1 is back on before the next apply.
-            if self.node_bypassed and self._set_node_enabled(item, True):
-                self.node_bypassed = False
-                log("node %d re-enabled before apply" % NODE_NUMBER)
+            # sure the bypassed node is back on before the next apply.
+            if self.bypassed_node is not None and self._set_node_enabled(item, self.bypassed_node, True):
+                log("node %d re-enabled before apply" % self.bypassed_node)
+                self.bypassed_node = None
             if not self.apply_cdl(item, state):
-                self.announce(False, reason="Resolve rejected SetCDL on node 1", force=True)
+                self.announce(False, force=True,
+                              reason="Resolve rejected SetCDL on node %d" % self.active_node)
                 return
 
-        self.announce(True, item=item, state=state, force=changed or wants_status)
+        self.announce(True, item=item, state=state,
+                      force=changed or wants_status or node_switched)
 
     # -- look presets ---------------------------------------------------------
 
@@ -492,8 +530,8 @@ class ColorEngine:
             return False
 
         # Same rule as wheel input: grading while bypassed is invisible.
-        if self.node_bypassed and self._set_node_enabled(item, True):
-            self.node_bypassed = False
+        if self.bypassed_node is not None and self._set_node_enabled(item, self.bypassed_node, True):
+            self.bypassed_node = None
 
         try:
             graph = item.GetNodeGraph()
@@ -519,12 +557,16 @@ class ColorEngine:
                   "reason": "Resolve rejected the preset"})
             return False
 
-        # The DRX is now the base look; the wheel/knobs become a neutral trim
-        # layer on top of it. Reset the shadow state (without calling SetCDL,
-        # which would stomp the look's own node 1 CDL) and tell the phone so
-        # its readouts zero out.
+        # The DRX is now the base look and can rewrite the whole node tree:
+        # drop the shadow state for ALL of this clip's nodes (without calling
+        # SetCDL, which would stomp the look's own CDLs), re-read the node
+        # count, and tell the phone so its readouts zero out.
+        uid = item.GetUniqueId()
+        self.states = {
+            key: value for key, value in self.states.items() if key[0] != uid
+        }
+        self.refresh_node_count(item)
         state = self.state_for(item)
-        state.update(USER_DEFAULTS)
         self.announce(True, item=item, state=state, force=True)
         emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": True})
         log("applied preset %r" % name)
@@ -551,7 +593,7 @@ class ColorEngine:
 
     def apply_cdl(self, item, state):
         try:
-            return bool(item.SetCDL(compose_cdl(state)))
+            return bool(item.SetCDL(compose_cdl(state, node_index=str(self.active_node))))
         except Exception as exc:
             log("SetCDL failed: %s" % exc)
             self.session.resolve = None
@@ -577,6 +619,8 @@ class ColorEngine:
                 "cmd": "color_state",
                 "available": True,
                 "clip": clip_name,
+                "node": self.active_node,
+                "node_count": self.node_count,
                 "lift": round(state["lift_m"], 6),
                 "gamma": round(state["gamma_m"], 6),
                 "gain": round(state["gain_m"], 6),
@@ -665,8 +709,8 @@ def main():
         if shutting_down:
             break
 
-    # Never exit with the node silently bypassed.
-    if engine.node_bypassed:
+    # Never exit with a node silently bypassed.
+    if engine.bypassed_node is not None:
         engine.handle_bypass(True)
     log("stdin closed, exiting")
 

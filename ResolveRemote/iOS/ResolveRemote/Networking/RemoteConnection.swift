@@ -106,7 +106,8 @@ final class RemoteConnection: ObservableObject {
         enabled: Bool? = nil,
         name: String? = nil,
         dx: Double? = nil,
-        dy: Double? = nil
+        dy: Double? = nil,
+        index: Int? = nil
     ) {
         guard isConnected, let connection else { return }
 
@@ -126,6 +127,7 @@ final class RemoteConnection: ObservableObject {
             name: name,
             dx: dx,
             dy: dy,
+            index: index,
             ts: Date().timeIntervalSince1970
         )
 

@@ -175,6 +175,24 @@ Requirements:
 No extra setup beyond that — start the helper as usual and the sidecar logs
 appear with a `[sidecar]` prefix.
 
+### Node targeting (Phase 8)
+
+The COLOR tab has a node stepper ("‹ NODE 2/4 ›") under the gear. All colour
+operations — wheels, trackball balance, knobs, resets, BEFORE/AFTER — apply
+to the stepper-selected node. Each node keeps its own independent trim
+values per clip; stepping back and forth restores each node's readouts and
+puck. If the playhead moves to a clip with fewer nodes, the selection clamps
+down automatically.
+
+**Known API limitation:** the scripting API cannot change which node is
+*highlighted* in Resolve's node graph UI. The app's selected node is where
+grades land; Resolve's on-screen selection will not follow. This is
+expected, not a bug.
+
+**Practical workflow:** build your node tree in Resolve first — e.g. node 1
+balance, node 2 look, node 3 vignette — then use the stepper to trim each
+stage from the phone.
+
 ### Known limitation: shadow state
 
 Resolve's API can *set* CDL grades but cannot *read* them back, so the helper

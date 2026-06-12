@@ -50,6 +50,8 @@ struct ColorModeView: View {
     @State private var balanceBatcher = VectorBatcher()
     /// Last seen balance magnitude for the visible target (ring haptics).
     @State private var lastBalanceMagnitude = 0.0
+    /// Last seen node, so node steps reseed instead of ticking.
+    @State private var lastSeenNode = 1
 
     private var colorState: ColorState? { connection.colorState }
     private var colorAvailable: Bool { colorState?.available == true }
@@ -60,6 +62,8 @@ struct ColorModeView: View {
 
             VStack(spacing: 8) {
                 ScreenHeader(title: "COLOR", clip: colorState?.clip, selectedTab: $selectedTab)
+
+                nodeStepperRow
 
                 colorControls
                     .opacity(colorAvailable ? 1 : 0.45)
@@ -131,6 +135,12 @@ struct ColorModeView: View {
         let magnitude = balanceMagnitude
         defer { lastBalanceMagnitude = magnitude }
 
+        // A node step swaps the whole vector — reseed, don't tick.
+        if activeNode != lastSeenNode {
+            lastSeenNode = activeNode
+            return
+        }
+
         if magnitude >= 0.999 {
             if lastBalanceMagnitude < 0.999 {
                 HapticsEngine.shared.heavyBump()
@@ -138,6 +148,58 @@ struct ColorModeView: View {
         } else if Int(magnitude * 10) != Int(lastBalanceMagnitude * 10) {
             HapticsEngine.shared.wheelTick()
         }
+    }
+
+    // MARK: - Node stepper
+
+    private var activeNode: Int { colorState?.node ?? 1 }
+    private var nodeCount: Int { colorState?.node_count ?? 1 }
+
+    /// "< NODE 2/4 >", right-aligned under the gear. All colour operations
+    /// land on this node; note Resolve's on-screen node highlight will NOT
+    /// follow (the API can't move it) — that's expected.
+    private var nodeStepperRow: some View {
+        HStack {
+            Spacer()
+            HStack(spacing: 4) {
+                if nodeCount > 1 {
+                    nodeChevron("chevron.left", step: -1, disabled: activeNode <= 1)
+                }
+                TrackedLabel(
+                    text: "NODE \(activeNode)/\(nodeCount)",
+                    size: 9,
+                    color: nodeCount > 1 ? Theme.textPrimary : Theme.textSecondary
+                )
+                .frame(minWidth: 64)
+                if nodeCount > 1 {
+                    nodeChevron("chevron.right", step: 1, disabled: activeNode >= nodeCount)
+                }
+            }
+        }
+        .frame(height: 28)
+        .opacity(colorAvailable ? 1 : 0.45)
+        .disabled(!colorAvailable)
+    }
+
+    private func nodeChevron(_ symbol: String, step: Int, disabled: Bool) -> some View {
+        Button {
+            HapticsEngine.shared.buttonTap()
+            connection.send(
+                cmd: CommandName.setNode,
+                mode: "color",
+                index: activeNode + step
+            )
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(disabled ? Theme.textSecondary.opacity(0.4) : Theme.textPrimary)
+                .frame(width: 34, height: 28)
+                .background(Theme.surface)
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
     }
 
     // MARK: - Sections

@@ -20,6 +20,7 @@ struct Command: Encodable {
     let name: String?
     let dx: Double?
     let dy: Double?
+    let index: Int?
     let ts: Double
 }
 
@@ -30,6 +31,9 @@ struct ColorState: Decodable, Equatable {
     let cmd: String
     let available: Bool
     let clip: String?
+    // Active node and the clip's node count (Phase 8).
+    let node: Int?
+    let node_count: Int?
     let lift: Double?
     let gamma: Double?
     let gain: Double?
@@ -87,6 +91,7 @@ enum CommandName {
     static let colorReset = "color_reset"
     static let colorStatus = "color_status"
     static let bypass = "bypass"
+    static let setNode = "set_node"
     static let listPresets = "list_presets"
     static let applyPreset = "apply_preset"
     static let grabStill = "grab_still"
