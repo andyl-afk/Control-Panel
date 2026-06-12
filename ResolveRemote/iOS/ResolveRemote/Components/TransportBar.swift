@@ -7,7 +7,7 @@ struct TransportBar: View {
     var send: (String) -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             transportButton("backward.fill", cmd: CommandName.shuttleLeft)
             transportButton("backward.frame.fill", cmd: CommandName.stepLeft)
             transportButton("playpause.fill", cmd: CommandName.playPause, prominent: true)
@@ -21,12 +21,13 @@ struct TransportBar: View {
             send(cmd)
         } label: {
             Image(systemName: symbol)
-                .font(.title3)
+                .font(.system(size: 17))
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(prominent ? Color(white: 0.25) : Color(white: 0.15))
-                .foregroundColor(.white)
+                .frame(height: 46)
+                .background(prominent ? Theme.surfaceRaised : Theme.surface)
+                .foregroundColor(prominent ? Theme.editAccent : Theme.textPrimary)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

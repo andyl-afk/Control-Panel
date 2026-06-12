@@ -1,19 +1,19 @@
 import SwiftUI
 
-/// Two rows of editing shortcuts.
+/// Two rows of editing shortcuts as surface cards: icon over label.
 struct ShortcutGrid: View {
     /// Sends a command by name (haptics are handled by the caller).
     var send: (String) -> Void
 
-    private let shortcuts: [(label: String, cmd: String)] = [
-        ("Blade", CommandName.blade),
-        ("Ripple", CommandName.rippleDelete),
-        ("Marker", CommandName.marker),
-        ("Undo", CommandName.undo),
-        ("In", CommandName.inPoint),
-        ("Out", CommandName.outPoint),
-        ("Prev Edit", CommandName.prevEdit),
-        ("Next Edit", CommandName.nextEdit),
+    private let shortcuts: [(label: String, icon: String, cmd: String)] = [
+        ("BLADE", "scissors", CommandName.blade),
+        ("RIPPLE", "delete.backward", CommandName.rippleDelete),
+        ("MARKER", "bookmark.fill", CommandName.marker),
+        ("UNDO", "arrow.uturn.backward", CommandName.undo),
+        ("IN", "arrow.right.to.line", CommandName.inPoint),
+        ("OUT", "arrow.left.to.line", CommandName.outPoint),
+        ("PREV", "backward.end", CommandName.prevEdit),
+        ("NEXT", "forward.end", CommandName.nextEdit),
     ]
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
@@ -24,15 +24,17 @@ struct ShortcutGrid: View {
                 Button {
                     send(shortcut.cmd)
                 } label: {
-                    Text(shortcut.label)
-                        .font(.footnote.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(Color(white: 0.15))
-                        .foregroundColor(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    VStack(spacing: 4) {
+                        Image(systemName: shortcut.icon)
+                            .font(.system(size: 14))
+                            .foregroundColor(Theme.textPrimary)
+                        TrackedLabel(text: shortcut.label, size: 8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Theme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }

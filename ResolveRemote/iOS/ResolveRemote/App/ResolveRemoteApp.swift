@@ -5,7 +5,7 @@ struct ResolveRemoteApp: App {
     @StateObject private var connection = RemoteConnection()
     @Environment(\.scenePhase) private var scenePhase
 
-    // Shared with ConnectionPanelView via the same keys.
+    // Shared with SettingsView via the same keys.
     @AppStorage("hostIP") private var savedHost = ""
     @AppStorage("portText") private var savedPortText = "49321"
 
@@ -42,15 +42,27 @@ struct ResolveRemoteApp: App {
     }
 }
 
-/// EDIT and COLOUR tabs. The Edit screen is exactly the Phase 1 view.
+/// EDIT / COLOR / SETTINGS behind the custom tab bar. The screens get the
+/// selection binding so their status dot and gear can jump to Settings.
 struct RootView: View {
+    @State private var tab: AppTab = .edit
+
     var body: some View {
-        TabView {
-            EditModeView()
-                .tabItem { Label("EDIT", systemImage: "timeline.selection") }
-            ColorModeView()
-                .tabItem { Label("COLOUR", systemImage: "circle.lefthalf.filled") }
+        VStack(spacing: 0) {
+            Group {
+                switch tab {
+                case .edit:
+                    EditModeView(selectedTab: $tab)
+                case .color:
+                    ColorModeView(selectedTab: $tab)
+                case .settings:
+                    SettingsView()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            CustomTabBar(selection: $tab)
         }
-        .tint(.orange)
+        .background(Theme.background.ignoresSafeArea())
     }
 }

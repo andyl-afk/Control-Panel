@@ -10,19 +10,20 @@ enum ColorTarget: String, CaseIterable {
 
     var accent: Color {
         switch self {
-        case .lift:  return Color(red: 0.95, green: 0.4, blue: 0.4)
-        case .gamma: return Color(red: 0.4, green: 0.85, blue: 0.5)
-        case .gain:  return Color(red: 0.45, green: 0.6, blue: 1.0)
+        case .lift:  return Theme.lift
+        case .gamma: return Theme.gamma
+        case .gain:  return Theme.gain
         }
     }
 }
 
-/// Colour Mode: three always-live master wheels (lift/gamma/gain), the
+/// Colour Mode: three always-live master dials (lift/gamma/gain), the
 /// compare/still/reset action row, speed, the derived-parameter knobs, and
-/// the Looks row. All grading still goes through the Phase 2-4 protocol —
-/// this screen is purely a different arrangement of the same commands.
+/// the Looks row. Phase 5.1 restyled the Phase 5 structure to the mockup
+/// language — same commands, same batching, new skin.
 struct ColorModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
+    @Binding var selectedTab: AppTab
 
     @State private var speed: Double = 1.0
     @State private var comparing = false
@@ -32,8 +33,8 @@ struct ColorModeView: View {
     @State private var presetError: String?
 
     // Indicator geometry: one wheel detent is 12 visual degrees, and each
-    // detent moves the value by the sidecar's per-tick step — so the ring
-    // tick tracks the finger 1:1 at speed 1.0 and snaps home on reset.
+    // detent moves the value by the sidecar's per-tick step — so the cap
+    // line tracks the finger 1:1 at speed 1.0 and snaps home on reset.
     private let indicatorDegreesPerTick: Double = 12
     private let liftStep = 0.002   // mirrors STEP_LIFT in resolve_bridge.py
     private let gammaStep = 0.005  // mirrors STEP_GAMMA (wheel-inverted)
@@ -44,10 +45,10 @@ struct ColorModeView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            ThemeBackground()
 
             VStack(spacing: 8) {
-                ConnectionPanelView()
+                ScreenHeader(title: "COLOR", clip: colorState?.clip, selectedTab: $selectedTab)
 
                 colorControls
                     .opacity(colorAvailable ? 1 : 0.45)
@@ -117,8 +118,8 @@ struct ColorModeView: View {
         }
     }
 
-    /// Three stacked wheel rows; the wheel diameter adapts to whatever
-    /// height is left after the fixed-size sections below.
+    /// Three stacked dial rows; the dial diameter adapts to whatever height
+    /// is left after the fixed-size sections below.
     private var wheelsSection: some View {
         GeometryReader { geo in
             let rowSpacing: CGFloat = 6
@@ -135,27 +136,22 @@ struct ColorModeView: View {
     private func wheelRow(_ target: ColorTarget, value: Double?, diameter: CGFloat) -> some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(target.label)
-                    .font(.caption2.bold())
-                    .tracking(1)
-                    .foregroundColor(target.accent)
+                TrackedLabel(text: target.label, size: 10, color: target.accent)
                 Text(value.map { String(format: "%.3f", $0) } ?? "—")
                     .font(.footnote.monospacedDigit())
-                    .foregroundColor(.white)
+                    .foregroundColor(Theme.textPrimary)
             }
             .frame(width: 62, alignment: .leading)
 
             Spacer(minLength: 0)
 
-            // Each wheel instance owns its own TickBatcher, so simultaneous
+            // Each dial instance owns its own TickBatcher, so simultaneous
             // wheels batch per target with nothing mixed.
-            HapticWheelView(
-                mode: .jog,
+            DialView(
                 speed: 1.0, // slider speed travels in the command instead
-                hubText: target.label,
                 accent: target.accent,
                 indicatorAngle: indicatorAngle(for: target),
-                onTick: { ticks in
+                onTicks: { ticks in
                     connection.send(
                         cmd: CommandName.colorDelta,
                         mode: "color",
@@ -174,16 +170,17 @@ struct ColorModeView: View {
             } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.footnote)
-                    .foregroundColor(Color(white: 0.6))
+                    .foregroundColor(Theme.textSecondary)
                     .frame(width: 44, height: 44) // full-size touch target
-                    .background(Color(white: 0.13))
+                    .background(Theme.surface)
                     .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
     }
 
-    /// Ring-tick angle from the actual value, so external resets (per-target,
+    /// Cap-line angle from the actual value, so external resets (per-target,
     /// Reset All, preset applies, clip switches) snap it back to 12 o'clock.
     private func indicatorAngle(for target: ColorTarget) -> Double {
         guard let state = colorState else { return 0 }
@@ -192,7 +189,7 @@ struct ColorModeView: View {
             return ((state.lift ?? 0) / liftStep) * indicatorDegreesPerTick
         case .gamma:
             // Wheel-right lowers power (the Phase 2 inversion); negate so the
-            // tick still moves clockwise with the finger.
+            // line still moves clockwise with the finger.
             return -(((state.gamma ?? 1) - 1) / gammaStep) * indicatorDegreesPerTick
         case .gain:
             return (((state.gain ?? 1) - 1) / gainStep) * indicatorDegreesPerTick
@@ -209,13 +206,12 @@ struct ColorModeView: View {
             Button {
                 sendReset("all") // resets all eight parameters in the sidecar
             } label: {
-                Text("Reset All")
-                    .font(.caption.weight(.semibold))
+                TrackedLabel(text: "RESET ALL", size: 9, color: Theme.textPrimary)
                     .padding(.horizontal, 14)
                     .frame(height: 44)
-                    .background(Color(white: 0.15))
-                    .foregroundColor(.white)
+                    .background(Theme.surface)
                     .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
@@ -224,19 +220,21 @@ struct ColorModeView: View {
     /// Press-and-hold to compare: node 1 is bypassed while held. If the app
     /// dies mid-hold, the connection drop makes the helper re-enable the node.
     private var bypassButton: some View {
-        Text(comparing ? "SHOWING BEFORE" : "BEFORE / AFTER")
-            .font(.caption.bold())
-            .tracking(1)
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
-            .background(comparing ? Color.orange : Color(white: 0.15))
-            .foregroundColor(comparing ? .black : .white)
-            .clipShape(Capsule())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in startCompare() }
-                    .onEnded { _ in endCompare() }
-            )
+        TrackedLabel(
+            text: comparing ? "SHOWING BEFORE" : "BEFORE / AFTER",
+            size: 9,
+            color: comparing ? .black : Theme.textPrimary
+        )
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
+        .background(comparing ? Theme.colorAccent : Theme.surface)
+        .clipShape(Capsule())
+        .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in startCompare() }
+                .onEnded { _ in endCompare() }
+        )
     }
 
     /// Grabs a still of the current clip into Resolve's Gallery.
@@ -247,58 +245,71 @@ struct ColorModeView: View {
         } label: {
             Image(systemName: "camera.fill")
                 .font(.footnote)
+                .foregroundColor(Theme.textPrimary)
                 .frame(width: 44, height: 44)
-                .background(Color(white: 0.15))
-                .foregroundColor(.white)
+                .background(Theme.surface)
                 .clipShape(Circle())
+                .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
 
     private var speedRow: some View {
         HStack(spacing: 8) {
-            Text("SPEED")
-                .font(.system(size: 9, weight: .bold))
-                .tracking(2)
-                .foregroundColor(Color(white: 0.5))
+            TrackedLabel(text: "SPEED", size: 9)
             Slider(value: $speed, in: 0.25...3.0)
-                .tint(Color(white: 0.55))
+                .tint(Theme.colorAccent)
             Text(String(format: "%.1fx", speed))
                 .font(.caption2.monospacedDigit())
-                .foregroundColor(Color(white: 0.6))
+                .foregroundColor(Theme.textSecondary)
                 .frame(width: 32, alignment: .trailing)
         }
     }
 
-    /// The five derived/secondary parameters. Each knob's value label doubles
-    /// as its readout; double-tap resets just that parameter.
+    /// The five derived/secondary parameters as small vertical dials. Each
+    /// knob's value label doubles as its readout; double-tap resets it.
     private var knobRow: some View {
         HStack(alignment: .top, spacing: 12) {
-            knob("CONTRAST", param: "contrast", value: colorState?.contrast, accent: Color(white: 0.75))
-            knob("PIVOT", param: "pivot", value: colorState?.pivot, accent: Color(white: 0.75))
-            knob("SAT", param: "sat", value: colorState?.sat, accent: Color(red: 0.4, green: 0.85, blue: 0.5))
-            knob("TEMP", param: "temp", value: colorState?.temp, accent: .orange)
-            knob("TINT", param: "tint", value: colorState?.tint, accent: Color(red: 0.9, green: 0.4, blue: 0.85))
+            knob("CONTRAST", param: "contrast", value: colorState?.contrast, accent: Theme.knobNeutral)
+            knob("PIVOT", param: "pivot", value: colorState?.pivot, accent: Theme.knobNeutral)
+            knob("SAT", param: "sat", value: colorState?.sat, accent: Theme.gamma)
+            knob("TEMP", param: "temp", value: colorState?.temp,
+                 accent: Theme.tempCool, accentSecondary: Theme.tempWarm)
+            knob("TINT", param: "tint", value: colorState?.tint, accent: Theme.tintAccent)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func knob(_ label: String, param: String, value: Double?, accent: Color) -> some View {
-        MiniKnob(
-            label: label,
-            accent: accent,
-            value: value,
-            onSteps: { steps in
-                connection.send(
-                    cmd: CommandName.paramDelta,
-                    mode: "color",
-                    steps: steps,
-                    speed: speed,
-                    param: param
-                )
-            },
-            onReset: { sendReset(param) }
-        )
+    private func knob(
+        _ label: String,
+        param: String,
+        value: Double?,
+        accent: Color,
+        accentSecondary: Color? = nil
+    ) -> some View {
+        VStack(spacing: 4) {
+            DialView(
+                style: .vertical,
+                accent: accent,
+                accentSecondary: accentSecondary,
+                onTicks: { steps in
+                    connection.send(
+                        cmd: CommandName.paramDelta,
+                        mode: "color",
+                        steps: steps,
+                        speed: speed,
+                        param: param
+                    )
+                },
+                onDoubleTap: { sendReset(param) }
+            )
+            .frame(width: 52, height: 52)
+
+            TrackedLabel(text: label, size: 8)
+            Text(value.map { String(format: "%.2f", $0) } ?? "—")
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundColor(Theme.textPrimary)
+        }
     }
 
     /// Horizontally scrolling look presets — one chip per .drx file in
@@ -307,10 +318,7 @@ struct ColorModeView: View {
         VStack(spacing: 4) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    Text("LOOKS")
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(1)
-                        .foregroundColor(Color(white: 0.45))
+                    TrackedLabel(text: "LOOKS", size: 9)
 
                     if let presets = connection.presets, !presets.isEmpty {
                         ForEach(presets, id: \.self) { name in
@@ -319,10 +327,10 @@ struct ColorModeView: View {
                     } else {
                         Text("Drop .drx files in ~/ResolveRemote/Looks")
                             .font(.caption2)
-                            .foregroundColor(Color(white: 0.45))
+                            .foregroundColor(Theme.textSecondary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(Color(white: 0.1))
+                            .background(Theme.surface.opacity(0.6))
                             .clipShape(Capsule())
                     }
 
@@ -332,9 +340,9 @@ struct ColorModeView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.caption)
-                            .foregroundColor(Color(white: 0.6))
+                            .foregroundColor(Theme.textSecondary)
                             .padding(8)
-                            .background(Color(white: 0.15))
+                            .background(Theme.surface)
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -344,7 +352,7 @@ struct ColorModeView: View {
             if let presetError {
                 Text(presetError)
                     .font(.caption2)
-                    .foregroundColor(.red)
+                    .foregroundColor(Theme.lift)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -360,11 +368,17 @@ struct ColorModeView: View {
             Text(name)
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
+                .foregroundColor(isApplied ? Theme.colorAccent : Theme.textPrimary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(isApplied ? Color(red: 0.4, green: 0.85, blue: 0.5) : Color(white: 0.15))
-                .foregroundColor(isApplied ? .black : .white)
+                .background(Theme.surface)
                 .clipShape(Capsule())
+                .overlay(
+                    Capsule().strokeBorder(
+                        isApplied ? Theme.colorAccent : Theme.stroke,
+                        lineWidth: isApplied ? 1.5 : 1
+                    )
+                )
         }
         .buttonStyle(.plain)
     }
@@ -373,10 +387,10 @@ struct ColorModeView: View {
         VStack(spacing: 10) {
             Text("Colour unavailable")
                 .font(.headline)
-                .foregroundColor(.white)
+                .foregroundColor(Theme.textPrimary)
             Text(unavailableReason)
                 .font(.footnote)
-                .foregroundColor(Color(white: 0.7))
+                .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
             Button {
                 HapticsEngine.shared.buttonTap()
@@ -386,15 +400,16 @@ struct ColorModeView: View {
                     .font(.footnote.bold())
                     .padding(.horizontal, 22)
                     .padding(.vertical, 9)
-                    .background(Color.orange)
+                    .background(Theme.colorAccent)
                     .foregroundColor(.black)
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
         }
         .padding(20)
-        .background(Color(white: 0.08).opacity(0.95))
+        .background(Theme.surface.opacity(0.97))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.stroke, lineWidth: 1))
         .padding(.horizontal, 24)
     }
 
@@ -436,6 +451,6 @@ struct ColorModeView: View {
 }
 
 #Preview {
-    ColorModeView()
+    ColorModeView(selectedTab: .constant(.color))
         .environmentObject(RemoteConnection())
 }

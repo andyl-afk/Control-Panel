@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Wheel behaviour modes. Phase 1: they all behave like JOG, but the UI
-/// exists so later phases only have to change the wheel logic.
+/// Wheel behaviour modes. JOG steps frames, SCRUB steps 10x, SHUTTLE maps
+/// deflection to J/K/L speed levels.
 enum WheelMode: String, CaseIterable {
     case jog = "JOG"
     case shuttle = "SHUTTLE"
@@ -18,14 +18,16 @@ struct ModeSelector: View {
                     HapticsEngine.shared.buttonTap()
                     selection = mode
                 } label: {
-                    Text(mode.rawValue)
-                        .font(.caption.bold())
-                        .tracking(1)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(selection == mode ? Color.orange : Color(white: 0.15))
-                        .foregroundColor(selection == mode ? .black : .white)
-                        .clipShape(Capsule())
+                    TrackedLabel(
+                        text: mode.rawValue,
+                        size: 10,
+                        color: selection == mode ? .black : Theme.textSecondary
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 34)
+                    .background(selection == mode ? Theme.editAccent : Theme.surface)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
