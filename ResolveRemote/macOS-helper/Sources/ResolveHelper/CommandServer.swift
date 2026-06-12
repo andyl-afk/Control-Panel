@@ -11,6 +11,10 @@ final class CommandServer {
     private var nextClientID = 1
     private var connections: [Int: NWConnection] = [:]
 
+    /// Fired whenever a client connection ends (cleanly or not). Used to make
+    /// sure a hold-to-compare bypass can't outlive the phone that started it.
+    var onClientDisconnected: (() -> Void)?
+
     init(port: UInt16, router: CommandRouter) {
         self.port = NWEndpoint.Port(rawValue: port)!
         self.router = router
@@ -65,7 +69,10 @@ final class CommandServer {
                 connection.cancel()
             case .cancelled:
                 print("[server] client #\(id) disconnected")
-                self?.queue.async { self?.connections.removeValue(forKey: id) }
+                self?.queue.async {
+                    self?.connections.removeValue(forKey: id)
+                    self?.onClientDisconnected?()
+                }
             default:
                 break
             }

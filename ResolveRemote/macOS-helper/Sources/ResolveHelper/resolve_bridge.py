@@ -9,10 +9,15 @@ Requires DaVinci Resolve STUDIO with external scripting set to Local
 (Preferences -> System -> General). The Swift helper sets RESOLVE_SCRIPT_API /
 RESOLVE_SCRIPT_LIB / PYTHONPATH before spawning this script.
 
+Phase 3: the per-clip shadow state holds eight USER parameters (masters, sat,
+temp, tint, contrast, pivot); compose_cdl() composes them into per-channel
+CDL values on every apply. Bypass (hold-to-compare) toggles node 1 on/off,
+bypassing the rate limiter.
+
 The Resolve API has no getter for CDL values, so this script keeps a shadow
-copy of the four CDL parameters per clip (keyed by TimelineItem.GetUniqueId()).
-If a clip was graded by other means first, our first write overwrites node 1's
-CDL with the shadow state — a known v1 limitation.
+copy of the parameters per clip (keyed by TimelineItem.GetUniqueId()). If a
+clip was graded by other means first, our first write overwrites node 1's
+CDL with the shadow state — a known limitation.
 """
 
 import json
@@ -25,38 +30,137 @@ import time
 # Tunables
 # ---------------------------------------------------------------------------
 
-# Per-tick step sizes (multiplied by the speed value sent from the phone).
-STEP_SLOPE = 0.005    # gain
-STEP_OFFSET = 0.002   # lift
-STEP_POWER = 0.005    # gamma
-STEP_SAT = 0.01       # saturation, per slider step
+# Per-step sizes (multiplied by the speed value sent from the phone).
+STEP_GAIN = 0.005      # color_delta gain (wheel)
+STEP_LIFT = 0.002      # color_delta lift (wheel)
+STEP_GAMMA = 0.005     # color_delta gamma (wheel)
+STEP_SAT = 0.01        # param_delta sat
+STEP_TEMP = 0.01       # param_delta temp
+STEP_TINT = 0.01       # param_delta tint
+STEP_CONTRAST = 0.01   # param_delta contrast
+STEP_PIVOT = 0.005     # param_delta pivot
 
-# Clamps (min, max) for each CDL parameter.
-CLAMP_SLOPE = (0.0, 4.0)
-CLAMP_OFFSET = (-1.0, 1.0)
-CLAMP_POWER = (0.05, 4.0)
-CLAMP_SAT = (0.0, 4.0)
+# How strongly temp/tint skew the slope channels.
+TEMP_STRENGTH = 0.3
+TINT_STRENGTH = 0.3
 
 # Wheel-right on GAMMA must brighten midtones, and CDL Power gets *smaller*
 # as midtones brighten — so gamma wheel ticks are inverted before applying.
+# The stored gamma_m is the actual CDL power value.
 GAMMA_WHEEL_INVERSION = -1.0
 
+# User-parameter clamps (min, max).
+CLAMP_GAIN_M = (0.0, 4.0)
+CLAMP_LIFT_M = (-1.0, 1.0)
+CLAMP_GAMMA_M = (0.05, 4.0)
+CLAMP_SAT = (0.0, 4.0)
+CLAMP_TEMP = (-1.0, 1.0)
+CLAMP_TINT = (-1.0, 1.0)
+CLAMP_CONTRAST = (0.0, 2.0)
+CLAMP_PIVOT = (0.0, 1.0)
+
+# Final per-channel clamps applied after composition.
+CLAMP_CH_SLOPE = (0.0, 4.0)
+CLAMP_CH_POWER = (0.05, 4.0)
+CLAMP_CH_OFFSET = (-1.0, 1.0)
+
 # SetCDL is applied at most this many times per second; deltas arriving in
-# between are summed and applied together.
+# between are summed and applied together. Bypass skips this limiter.
 MAX_APPLIES_PER_SECOND = 30.0
 
 # We only ever touch node 1.
 NODE_INDEX = "1"
+NODE_NUMBER = 1  # integer form for SetNodeEnabled
 
-DEFAULT_STATE = {"slope": 1.0, "offset": 0.0, "power": 1.0, "sat": 1.0}
-
-# Maps the phone's target names to shadow-state keys, step sizes, clamps and
-# the direction multiplier for wheel ticks.
-TARGETS = {
-    "gain": ("slope", STEP_SLOPE, CLAMP_SLOPE, 1.0),
-    "lift": ("offset", STEP_OFFSET, CLAMP_OFFSET, 1.0),
-    "gamma": ("power", STEP_POWER, CLAMP_POWER, GAMMA_WHEEL_INVERSION),
+# 0.435 is Resolve's default contrast pivot.
+USER_DEFAULTS = {
+    "lift_m": 0.0,
+    "gamma_m": 1.0,
+    "gain_m": 1.0,
+    "sat": 1.0,
+    "temp": 0.0,
+    "tint": 0.0,
+    "contrast": 1.0,
+    "pivot": 0.435,
 }
+
+# color_delta target -> (state key, step, clamp, wheel direction)
+WHEEL_TARGETS = {
+    "gain": ("gain_m", STEP_GAIN, CLAMP_GAIN_M, 1.0),
+    "lift": ("lift_m", STEP_LIFT, CLAMP_LIFT_M, 1.0),
+    "gamma": ("gamma_m", STEP_GAMMA, CLAMP_GAMMA_M, GAMMA_WHEEL_INVERSION),
+}
+
+# param_delta param -> (state key, step, clamp)
+KNOB_PARAMS = {
+    "sat": ("sat", STEP_SAT, CLAMP_SAT),
+    "temp": ("temp", STEP_TEMP, CLAMP_TEMP),
+    "tint": ("tint", STEP_TINT, CLAMP_TINT),
+    "contrast": ("contrast", STEP_CONTRAST, CLAMP_CONTRAST),
+    "pivot": ("pivot", STEP_PIVOT, CLAMP_PIVOT),
+}
+
+# color_reset target -> state key ("all" handled separately)
+RESET_TARGETS = {
+    "lift": "lift_m",
+    "gamma": "gamma_m",
+    "gain": "gain_m",
+    "sat": "sat",
+    "temp": "temp",
+    "tint": "tint",
+    "contrast": "contrast",
+    "pivot": "pivot",
+}
+
+
+def clamped(value, bounds):
+    low, high = bounds
+    return max(low, min(high, value))
+
+
+def compose_cdl(params):
+    """Pure function: user parameters -> SetCDL payload dict.
+
+    Composition order (per spec):
+      1. base RGB triplets from the masters
+      2. temperature skews slope R/B
+      3. tint skews slope G (and counters on R/B)
+      4. contrast scales slope and re-anchors offset around the pivot
+      5. per-channel clamps
+    """
+    slope = [params["gain_m"]] * 3
+    offset = [params["lift_m"]] * 3
+    # gamma_m already holds the (wheel-inverted) CDL power value.
+    power = [params["gamma_m"]] * 3
+
+    temp = params["temp"]
+    slope[0] *= (1 + temp * TEMP_STRENGTH)
+    slope[2] *= (1 - temp * TEMP_STRENGTH)
+
+    tint = params["tint"]
+    slope[1] *= (1 + tint * TINT_STRENGTH)
+    slope[0] *= (1 - tint * TINT_STRENGTH * 0.5)
+    slope[2] *= (1 - tint * TINT_STRENGTH * 0.5)
+
+    contrast = params["contrast"]
+    pivot = params["pivot"]
+    slope = [s * contrast for s in slope]
+    offset = [o * contrast + pivot * (1 - contrast) for o in offset]
+
+    slope = [clamped(s, CLAMP_CH_SLOPE) for s in slope]
+    power = [clamped(p, CLAMP_CH_POWER) for p in power]
+    offset = [clamped(o, CLAMP_CH_OFFSET) for o in offset]
+
+    def triplet(values):
+        return "%.6f %.6f %.6f" % tuple(values)
+
+    return {
+        "NodeIndex": NODE_INDEX,
+        "Slope": triplet(slope),
+        "Offset": triplet(offset),
+        "Power": triplet(power),
+        "Saturation": "%.6f" % clamped(params["sat"], CLAMP_SAT),
+    }
 
 
 def emit(obj):
@@ -137,19 +241,56 @@ class ResolveSession:
 class ColorEngine:
     def __init__(self):
         self.session = ResolveSession()
-        self.states = {}          # clip unique id -> dict like DEFAULT_STATE
+        self.states = {}            # clip unique id -> dict like USER_DEFAULTS
         self.current_uid = None
         self.last_available = None  # tri-state: None / True / False
+        self.node_bypassed = False  # last known bypass state of node 1
+        # Bypass runs on the reader thread, applies on the worker — one lock
+        # guards all Resolve API access.
+        self.lock = threading.Lock()
 
     def state_for(self, item):
         uid = item.GetUniqueId()
         if uid != self.current_uid:
             self.current_uid = uid
-            self.states.setdefault(uid, dict(DEFAULT_STATE))
+            self.states.setdefault(uid, dict(USER_DEFAULTS))
         return self.states[self.current_uid]
+
+    # -- bypass (hold-to-compare) -------------------------------------------
+
+    def handle_bypass(self, enabled):
+        """Called directly from the reader thread; must feel instant."""
+        with self.lock:
+            if enabled and not self.node_bypassed:
+                return  # idempotent: nothing to re-enable
+            item, reason = self.session.current_item()
+            if item is None:
+                log("bypass ignored: %s" % reason)
+                return
+            if self._set_node_enabled(item, enabled):
+                self.node_bypassed = not enabled
+                log("node %d %s" % (NODE_NUMBER, "enabled" if enabled else "bypassed"))
+
+    def _set_node_enabled(self, item, enabled):
+        try:
+            # Re-fetch the graph every call — cheap, and avoids stale handles.
+            graph = item.GetNodeGraph()
+            if graph is None:
+                log("bypass failed: clip has no node graph")
+                return False
+            return bool(graph.SetNodeEnabled(NODE_NUMBER, enabled))
+        except Exception as exc:
+            log("SetNodeEnabled failed: %s" % exc)
+            return False
+
+    # -- batched colour commands --------------------------------------------
 
     def process_batch(self, batch):
         """Apply a drained batch of commands with one SetCDL at the end."""
+        with self.lock:
+            self._process_batch_locked(batch)
+
+    def _process_batch_locked(self, batch):
         wants_status = any(c.get("cmd") == "color_status" for c in batch)
         mutating = [c for c in batch if c.get("cmd") != "color_status"]
 
@@ -166,7 +307,7 @@ class ColorEngine:
         for cmd in mutating:
             name = cmd.get("cmd")
             if name == "color_delta":
-                target = TARGETS.get(cmd.get("target"))
+                target = WHEEL_TARGETS.get(cmd.get("target"))
                 if target is None:
                     log("unknown color_delta target: %r" % cmd.get("target"))
                     continue
@@ -175,22 +316,24 @@ class ColorEngine:
                 speed = cmd.get("speed") or 1.0
                 state[key] = clamped(state[key] + ticks * step * speed * direction, clamp)
                 changed = True
-            elif name == "sat_delta":
+            elif name == "param_delta":
+                param = KNOB_PARAMS.get(cmd.get("param"))
+                if param is None:
+                    log("unknown param_delta param: %r" % cmd.get("param"))
+                    continue
+                key, step, clamp = param
                 steps = cmd.get("steps") or 0
                 speed = cmd.get("speed") or 1.0
-                state["sat"] = clamped(state["sat"] + steps * STEP_SAT * speed, CLAMP_SAT)
+                state[key] = clamped(state[key] + steps * step * speed, clamp)
                 changed = True
             elif name == "color_reset":
                 target = cmd.get("target")
                 if target == "all":
-                    state.update(DEFAULT_STATE)
+                    state.update(USER_DEFAULTS)
                     changed = True
-                elif target == "sat":
-                    state["sat"] = DEFAULT_STATE["sat"]
-                    changed = True
-                elif target in TARGETS:
-                    key = TARGETS[target][0]
-                    state[key] = DEFAULT_STATE[key]
+                elif target in RESET_TARGETS:
+                    key = RESET_TARGETS[target]
+                    state[key] = USER_DEFAULTS[key]
                     changed = True
                 else:
                     log("unknown color_reset target: %r" % target)
@@ -198,28 +341,20 @@ class ColorEngine:
                 log("unknown colour command: %r" % name)
 
         if changed:
-            ok = self.apply_cdl(item, state)
-            if not ok:
+            # Grading while bypassed would be invisible and confusing — make
+            # sure node 1 is back on before the next apply.
+            if self.node_bypassed and self._set_node_enabled(item, True):
+                self.node_bypassed = False
+                log("node %d re-enabled before apply" % NODE_NUMBER)
+            if not self.apply_cdl(item, state):
                 self.announce(False, reason="Resolve rejected SetCDL on node 1", force=True)
                 return
 
-        if changed or wants_status:
-            self.announce(True, item=item, state=state, force=True)
-        else:
-            self.announce(True, item=item, state=state, force=False)
+        self.announce(True, item=item, state=state, force=changed or wants_status)
 
     def apply_cdl(self, item, state):
-        def triplet(value):
-            return "%.6f %.6f %.6f" % (value, value, value)
-
         try:
-            return bool(item.SetCDL({
-                "NodeIndex": NODE_INDEX,
-                "Slope": triplet(state["slope"]),
-                "Offset": triplet(state["offset"]),
-                "Power": triplet(state["power"]),
-                "Saturation": "%.6f" % state["sat"],
-            }))
+            return bool(item.SetCDL(compose_cdl(state)))
         except Exception as exc:
             log("SetCDL failed: %s" % exc)
             self.session.resolve = None
@@ -241,18 +376,17 @@ class ColorEngine:
                 "cmd": "color_state",
                 "available": True,
                 "clip": clip_name,
-                "lift": round(state["offset"], 6),
-                "gamma": round(state["power"], 6),
-                "gain": round(state["slope"], 6),
+                "lift": round(state["lift_m"], 6),
+                "gamma": round(state["gamma_m"], 6),
+                "gain": round(state["gain_m"], 6),
                 "sat": round(state["sat"], 6),
+                "temp": round(state["temp"], 6),
+                "tint": round(state["tint"], 6),
+                "contrast": round(state["contrast"], 6),
+                "pivot": round(state["pivot"], 6),
             })
         else:
             emit({"v": 1, "cmd": "color_state", "available": False, "reason": reason})
-
-
-def clamped(value, bounds):
-    low, high = bounds
-    return max(low, min(high, value))
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +396,7 @@ def clamped(value, bounds):
 def main():
     commands = queue.Queue()
     sentinel = object()
+    engine = ColorEngine()
 
     def read_stdin():
         for line in sys.stdin:
@@ -269,15 +404,21 @@ def main():
             if not line:
                 continue
             try:
-                commands.put(json.loads(line))
+                cmd = json.loads(line)
             except ValueError:
                 log("ignoring malformed JSON: %s" % line)
+                continue
+            if cmd.get("cmd") == "bypass":
+                # Momentary control: handle right here, skipping the rate
+                # limiter, so hold-to-compare feels instant.
+                engine.handle_bypass(bool(cmd.get("enabled", True)))
+            else:
+                commands.put(cmd)
         commands.put(sentinel)  # stdin closed: the helper went away
 
     threading.Thread(target=read_stdin, daemon=True).start()
 
     log("resolve_bridge started (python %s)" % sys.version.split()[0])
-    engine = ColorEngine()
     # Report initial availability without blocking startup on Resolve.
     if engine.session.connect():
         log("connected to Resolve")
@@ -315,6 +456,9 @@ def main():
         if shutting_down:
             break
 
+    # Never exit with the node silently bypassed.
+    if engine.node_bypassed:
+        engine.handle_bypass(True)
     log("stdin closed, exiting")
 
 

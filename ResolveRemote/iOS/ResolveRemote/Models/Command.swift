@@ -15,6 +15,8 @@ struct Command: Encodable {
     let target: String?
     let steps: Int?
     let speed: Double?
+    let param: String?
+    let enabled: Bool?
     let ts: Double
 }
 
@@ -29,6 +31,10 @@ struct ColorState: Decodable, Equatable {
     let gamma: Double?
     let gain: Double?
     let sat: Double?
+    let temp: Double?
+    let tint: Double?
+    let contrast: Double?
+    let pivot: Double?
     let reason: String?
 }
 
@@ -54,7 +60,8 @@ enum CommandName {
 
     // Colour mode (mode: "color")
     static let colorDelta = "color_delta"
-    static let satDelta = "sat_delta"
+    static let paramDelta = "param_delta"
     static let colorReset = "color_reset"
     static let colorStatus = "color_status"
+    static let bypass = "bypass"
 }

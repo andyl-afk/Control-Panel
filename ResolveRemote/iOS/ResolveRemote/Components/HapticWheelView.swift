@@ -44,8 +44,7 @@ struct HapticWheelView: View {
     @State private var shuttleLevel = 0
 
     // MARK: - Tick batching
-    @State private var pendingTicks = 0
-    @State private var flushTimer: Timer?
+    @State private var batcher = TickBatcher()
     @State private var lastTickHapticAt: TimeInterval = 0
 
     var body: some View {
@@ -167,31 +166,10 @@ struct HapticWheelView: View {
         }
         lastDirection = direction
 
-        // Batch instead of sending one message per detent; the timer flushes
-        // the sum at most `flushesPerSecond` times a second.
-        pendingTicks += mode == .scrub ? ticks * scrubMultiplier : ticks
-        startFlushTimerIfNeeded()
-    }
-
-    // MARK: - Tick batching
-
-    private func startFlushTimerIfNeeded() {
-        guard flushTimer == nil else { return }
-        flushTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / flushesPerSecond, repeats: true) { _ in
-            flushPendingTicks()
-        }
-    }
-
-    private func flushPendingTicks() {
-        guard pendingTicks != 0 else { return }
-        let ticks = pendingTicks
-        pendingTicks = 0
-        onTick(ticks)
-    }
-
-    private func stopFlushTimer() {
-        flushTimer?.invalidate()
-        flushTimer = nil
+        // Batch instead of sending one message per detent; TickBatcher
+        // flushes the sum at most `flushesPerSecond` times a second.
+        batcher.onFlush = onTick
+        batcher.add(mode == .scrub ? ticks * scrubMultiplier : ticks)
     }
 
     private func handleShuttleDelta(_ delta: Double) {
@@ -219,8 +197,7 @@ struct HapticWheelView: View {
         accumulated = 0
 
         // Flush straight away so the final ticks aren't delayed by the timer.
-        flushPendingTicks()
-        stopFlushTimer()
+        batcher.finish()
 
         if mode == .shuttle {
             // Spring back to centre and stop playback.

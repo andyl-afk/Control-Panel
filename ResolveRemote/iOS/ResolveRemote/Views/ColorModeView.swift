@@ -26,6 +26,7 @@ struct ColorModeView: View {
 
     @State private var target: ColorTarget = .gain
     @State private var speed: Double = 1.0
+    @State private var comparing = false
 
     private var colorState: ColorState? { connection.colorState }
     private var colorAvailable: Bool { colorState?.available == true }
@@ -59,7 +60,13 @@ struct ColorModeView: View {
             requestStatus()
         }
         .onChange(of: connection.isConnected) { _, connected in
-            if connected { requestStatus() }
+            if connected {
+                requestStatus()
+            } else {
+                // The helper re-enables the node when our connection drops;
+                // mirror that locally so the button isn't stuck on "before".
+                comparing = false
+            }
         }
     }
 
@@ -90,11 +97,13 @@ struct ColorModeView: View {
                     )
                 }
             )
-            .frame(maxWidth: 280, maxHeight: 280)
+            .frame(maxWidth: 230, maxHeight: 230)
+
+            bypassButton
 
             readouts
 
-            saturationRow
+            knobRow
         }
     }
 
@@ -146,10 +155,9 @@ struct ColorModeView: View {
             readoutRow(label: "LIFT", value: colorState?.lift, accent: ColorTarget.lift.accent, resetTarget: "lift")
             readoutRow(label: "GAMMA", value: colorState?.gamma, accent: ColorTarget.gamma.accent, resetTarget: "gamma")
             readoutRow(label: "GAIN", value: colorState?.gain, accent: ColorTarget.gain.accent, resetTarget: "gain")
-            readoutRow(label: "SAT", value: colorState?.sat, accent: .orange, resetTarget: "sat")
 
             Button {
-                sendReset("all")
+                sendReset("all") // resets all eight parameters in the sidecar
             } label: {
                 Text("Reset All")
                     .font(.footnote.weight(.semibold))
@@ -161,6 +169,55 @@ struct ColorModeView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    /// The five derived/secondary parameters. Each knob's value label doubles
+    /// as its readout; double-tap resets just that parameter.
+    private var knobRow: some View {
+        HStack(alignment: .top, spacing: 14) {
+            knob("CONTRAST", param: "contrast", value: colorState?.contrast, accent: Color(white: 0.75))
+            knob("PIVOT", param: "pivot", value: colorState?.pivot, accent: Color(white: 0.75))
+            knob("SAT", param: "sat", value: colorState?.sat, accent: Color(red: 0.4, green: 0.85, blue: 0.5))
+            knob("TEMP", param: "temp", value: colorState?.temp, accent: .orange)
+            knob("TINT", param: "tint", value: colorState?.tint, accent: Color(red: 0.9, green: 0.4, blue: 0.85))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func knob(_ label: String, param: String, value: Double?, accent: Color) -> some View {
+        MiniKnob(
+            label: label,
+            accent: accent,
+            value: value,
+            onSteps: { steps in
+                connection.send(
+                    cmd: CommandName.paramDelta,
+                    mode: "color",
+                    steps: steps,
+                    speed: speed,
+                    param: param
+                )
+            },
+            onReset: { sendReset(param) }
+        )
+    }
+
+    /// Press-and-hold to compare: node 1 is bypassed while held. If the app
+    /// dies mid-hold, the connection drop makes the helper re-enable the node.
+    private var bypassButton: some View {
+        Text(comparing ? "SHOWING BEFORE" : "BEFORE / AFTER")
+            .font(.footnote.bold())
+            .tracking(1)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(comparing ? Color.orange : Color(white: 0.15))
+            .foregroundColor(comparing ? .black : .white)
+            .clipShape(Capsule())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in startCompare() }
+                    .onEnded { _ in endCompare() }
+            )
     }
 
     private func readoutRow(label: String, value: Double?, accent: Color, resetTarget: String) -> some View {
@@ -185,17 +242,6 @@ struct ColorModeView: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-        }
-    }
-
-    private var saturationRow: some View {
-        DetentSlider(accent: .orange) { steps in
-            connection.send(
-                cmd: CommandName.satDelta,
-                mode: "color",
-                steps: steps,
-                speed: speed
-            )
         }
     }
 
@@ -244,6 +290,20 @@ struct ColorModeView: View {
     private func sendReset(_ resetTarget: String) {
         HapticsEngine.shared.heavyBump()
         connection.send(cmd: CommandName.colorReset, mode: "color", target: resetTarget)
+    }
+
+    private func startCompare() {
+        guard !comparing else { return }
+        comparing = true
+        HapticsEngine.shared.heavyBump()
+        connection.send(cmd: CommandName.bypass, mode: "color", enabled: false)
+    }
+
+    private func endCompare() {
+        guard comparing else { return }
+        comparing = false
+        HapticsEngine.shared.heavyBump()
+        connection.send(cmd: CommandName.bypass, mode: "color", enabled: true)
     }
 }
 

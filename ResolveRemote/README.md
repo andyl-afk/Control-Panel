@@ -156,9 +156,12 @@ The app just connects to an IP, so any network path works:
 
 ## Colour Mode setup (Phase 2)
 
-Colour Mode adjusts Lift / Gamma / Gain (master value, node 1) and Saturation
-on the current clip through Resolve's scripting API, via a Python sidecar the
-helper spawns automatically.
+Colour Mode adjusts Lift / Gamma / Gain (master value, node 1), Saturation,
+and the derived Temp / Tint / Contrast / Pivot knobs on the current clip
+through Resolve's scripting API, via a Python sidecar the helper spawns
+automatically. The derived knobs are composed into per-channel CDL values
+(they are CDL math, not Resolve's native primary controls). A hold-to-compare
+button temporarily bypasses node 1.
 
 Requirements:
 

@@ -131,6 +131,11 @@ let server = CommandServer(port: port, router: router)
 colorBridge.onOutput = { line in
     server.broadcast(line: line)
 }
+// If a phone vanishes mid hold-to-compare, re-enable the node so a grade is
+// never left silently bypassed (the sidecar no-ops when not bypassed).
+server.onClientDisconnected = {
+    colorBridge.send(line: #"{"v":1,"seq":0,"mode":"color","cmd":"bypass","enabled":true}"#)
+}
 colorBridge.start()
 
 do {
