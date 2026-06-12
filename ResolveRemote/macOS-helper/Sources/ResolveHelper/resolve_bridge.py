@@ -21,6 +21,7 @@ CDL with the shadow state — a known limitation.
 """
 
 import json
+import os
 import queue
 import sys
 import threading
@@ -71,6 +72,11 @@ MAX_APPLIES_PER_SECOND = 30.0
 # We only ever touch node 1.
 NODE_INDEX = "1"
 NODE_NUMBER = 1  # integer form for SetNodeEnabled
+
+# Look presets: every .drx file in this folder is a preset; the filename
+# (without extension) is the button name on the phone. The folder is the
+# management UI — the sidecar re-scans it on every list request.
+LOOKS_DIR = os.path.expanduser("~/ResolveRemote/Looks")
 
 # 0.435 is Resolve's default contrast pivot.
 USER_DEFAULTS = {
@@ -211,27 +217,31 @@ class ResolveSession:
         self.reason = None
         return True
 
-    def current_item(self):
-        """Returns (timeline_item, error_reason). Exactly one is not None."""
+    def current_context(self):
+        """Returns (timeline, item, error_reason).
+
+        `reason` is set whenever `item` is None; `timeline` may still be
+        valid in that case (grab_still only needs the timeline).
+        """
         if self.resolve is None and not self.connect():
-            return None, self.reason
+            return None, None, self.reason
         try:
             manager = self.resolve.GetProjectManager()
             project = manager.GetCurrentProject() if manager else None
             if project is None:
-                return None, "No project is open in Resolve"
+                return None, None, "No project is open in Resolve"
             timeline = project.GetCurrentTimeline()
             if timeline is None:
-                return None, "No timeline is open in Resolve"
+                return None, None, "No timeline is open in Resolve"
             item = timeline.GetCurrentVideoItem()
             if item is None:
-                return None, "No video clip at the playhead"
-            return item, None
+                return timeline, None, "No video clip at the playhead"
+            return timeline, item, None
         except Exception as exc:
             # Resolve most likely quit; drop the handle so the next command
             # attempts a fresh connection.
             self.resolve = None
-            return None, "Lost connection to Resolve (%s)" % exc
+            return None, None, "Lost connection to Resolve (%s)" % exc
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +273,7 @@ class ColorEngine:
         with self.lock:
             if enabled and not self.node_bypassed:
                 return  # idempotent: nothing to re-enable
-            item, reason = self.session.current_item()
+            _, item, reason = self.session.current_context()
             if item is None:
                 log("bypass ignored: %s" % reason)
                 return
@@ -291,13 +301,31 @@ class ColorEngine:
             self._process_batch_locked(batch)
 
     def _process_batch_locked(self, batch):
-        wants_status = any(c.get("cmd") == "color_status" for c in batch)
-        mutating = [c for c in batch if c.get("cmd") != "color_status"]
+        # Preset listing is a plain folder scan — answer it even when Resolve
+        # itself is unreachable.
+        remaining = []
+        for cmd in batch:
+            if cmd.get("cmd") == "list_presets":
+                self.send_preset_list()
+            else:
+                remaining.append(cmd)
+        if not remaining:
+            return
 
-        item, reason = self.session.current_item()
+        wants_status = any(c.get("cmd") == "color_status" for c in remaining)
+        mutating = [c for c in remaining if c.get("cmd") != "color_status"]
+
+        timeline, item, reason = self.session.current_context()
         if item is None:
             if mutating:
                 log("dropping %d colour command(s): %s" % (len(mutating), reason))
+                # Don't leave the phone hanging on replies it expects.
+                for cmd in mutating:
+                    if cmd.get("cmd") == "apply_preset":
+                        emit({"v": 1, "cmd": "preset_applied",
+                              "name": cmd.get("name") or "?", "ok": False, "reason": reason})
+                    elif cmd.get("cmd") == "grab_still":
+                        emit({"v": 1, "cmd": "still_grabbed", "ok": False})
             self.announce(False, reason=reason, force=wants_status)
             return
 
@@ -337,6 +365,14 @@ class ColorEngine:
                     changed = True
                 else:
                     log("unknown color_reset target: %r" % target)
+            elif name == "apply_preset":
+                if self.apply_preset(item, cmd.get("name") or ""):
+                    # The DRX is now the base look and the shadow state was
+                    # reset — any deltas earlier in this batch are obsolete.
+                    state = self.state_for(item)
+                    changed = False
+            elif name == "grab_still":
+                self.grab_still(timeline)
             else:
                 log("unknown colour command: %r" % name)
 
@@ -351,6 +387,78 @@ class ColorEngine:
                 return
 
         self.announce(True, item=item, state=state, force=changed or wants_status)
+
+    # -- look presets ---------------------------------------------------------
+
+    def send_preset_list(self):
+        """Fresh folder scan on every request — the folder is the source of
+        truth, no caching, no file watching."""
+        try:
+            names = sorted(
+                os.path.splitext(entry)[0]
+                for entry in os.listdir(LOOKS_DIR)
+                if entry.lower().endswith(".drx") and not entry.startswith(".")
+            )
+        except OSError as exc:
+            log("could not scan %s: %s" % (LOOKS_DIR, exc))
+            names = []
+        emit({"v": 1, "cmd": "preset_list", "presets": names})
+
+    def apply_preset(self, item, name):
+        """Apply a .drx look to the current clip. Returns True when applied
+        (so the caller can refresh its shadow-state handle)."""
+        path = os.path.join(LOOKS_DIR, name + ".drx")
+        if not os.path.isfile(path):
+            emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
+                  "reason": "Preset file not found — refresh the list"})
+            return False
+
+        # Same rule as wheel input: grading while bypassed is invisible.
+        if self.node_bypassed and self._set_node_enabled(item, True):
+            self.node_bypassed = False
+
+        try:
+            graph = item.GetNodeGraph()
+            if graph is None:
+                emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
+                      "reason": "Clip has no node graph"})
+                return False
+            ok = bool(graph.ApplyGradeFromDRX(path, 0))  # 0 = no keyframes
+            # WORKAROUND for a Resolve macOS API bug: a graph handle obtained
+            # BEFORE ApplyGradeFromDRX can crash Resolve if used again
+            # afterwards. Re-fetch immediately and drop both handles so
+            # nothing stale can leak into later calls.
+            graph = item.GetNodeGraph()
+            del graph
+        except Exception as exc:
+            log("ApplyGradeFromDRX failed: %s" % exc)
+            emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
+                  "reason": "Resolve error applying preset: %s" % exc})
+            return False
+
+        if not ok:
+            emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
+                  "reason": "Resolve rejected the preset"})
+            return False
+
+        # The DRX is now the base look; the wheel/knobs become a neutral trim
+        # layer on top of it. Reset the shadow state (without calling SetCDL,
+        # which would stomp the look's own node 1 CDL) and tell the phone so
+        # its readouts zero out.
+        state = self.state_for(item)
+        state.update(USER_DEFAULTS)
+        self.announce(True, item=item, state=state, force=True)
+        emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": True})
+        log("applied preset %r" % name)
+        return True
+
+    def grab_still(self, timeline):
+        try:
+            ok = timeline.GrabStillFromCurrentVideoClip() is not None
+        except Exception as exc:
+            log("GrabStillFromCurrentVideoClip failed: %s" % exc)
+            ok = False
+        emit({"v": 1, "cmd": "still_grabbed", "ok": ok})
 
     def apply_cdl(self, item, state):
         try:
@@ -419,6 +527,11 @@ def main():
     threading.Thread(target=read_stdin, daemon=True).start()
 
     log("resolve_bridge started (python %s)" % sys.version.split()[0])
+    try:
+        os.makedirs(LOOKS_DIR, exist_ok=True)
+        log("looks folder: %s" % LOOKS_DIR)
+    except OSError as exc:
+        log("could not create looks folder %s: %s" % (LOOKS_DIR, exc))
     # Report initial availability without blocking startup on Resolve.
     if engine.session.connect():
         log("connected to Resolve")

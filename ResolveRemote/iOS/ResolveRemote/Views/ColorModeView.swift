@@ -27,6 +27,10 @@ struct ColorModeView: View {
     @State private var target: ColorTarget = .gain
     @State private var speed: Double = 1.0
     @State private var comparing = false
+    /// Name of the preset to briefly highlight after a successful apply.
+    @State private var appliedPreset: String?
+    /// Transient failure text shown under the looks row.
+    @State private var presetError: String?
 
     private var colorState: ColorState? { connection.colorState }
     private var colorAvailable: Bool { colorState?.available == true }
@@ -58,14 +62,39 @@ struct ColorModeView: View {
         .onAppear {
             HapticsEngine.shared.prepare()
             requestStatus()
+            requestPresets()
         }
         .onChange(of: connection.isConnected) { _, connected in
             if connected {
                 requestStatus()
+                requestPresets()
             } else {
                 // The helper re-enables the node when our connection drops;
                 // mirror that locally so the button isn't stuck on "before".
                 comparing = false
+            }
+        }
+        .onChange(of: connection.presetResult) { _, result in
+            guard let result else { return }
+            if result.ok {
+                HapticsEngine.shared.heavyBump()
+                presetError = nil
+                appliedPreset = result.name
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if appliedPreset == result.name { appliedPreset = nil }
+                }
+            } else {
+                presetError = result.reason ?? "Could not apply \(result.name)"
+                Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    presetError = nil
+                }
+            }
+        }
+        .onChange(of: connection.stillResult) { _, result in
+            if result?.ok == true {
+                HapticsEngine.shared.heavyBump()
             }
         }
     }
@@ -99,11 +128,13 @@ struct ColorModeView: View {
             )
             .frame(maxWidth: 230, maxHeight: 230)
 
-            bypassButton
+            compareRow
 
             readouts
 
             knobRow
+
+            looksRow
         }
     }
 
@@ -202,6 +233,13 @@ struct ColorModeView: View {
         )
     }
 
+    private var compareRow: some View {
+        HStack(spacing: 10) {
+            bypassButton
+            grabStillButton
+        }
+    }
+
     /// Press-and-hold to compare: node 1 is bypassed while held. If the app
     /// dies mid-hold, the connection drop makes the helper re-enable the node.
     private var bypassButton: some View {
@@ -218,6 +256,91 @@ struct ColorModeView: View {
                     .onChanged { _ in startCompare() }
                     .onEnded { _ in endCompare() }
             )
+    }
+
+    /// Grabs a still of the current clip into Resolve's Gallery.
+    private var grabStillButton: some View {
+        Button {
+            HapticsEngine.shared.buttonTap()
+            connection.send(cmd: CommandName.grabStill, mode: "color")
+        } label: {
+            Image(systemName: "camera.fill")
+                .font(.footnote)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+                .background(Color(white: 0.15))
+                .foregroundColor(.white)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Horizontally scrolling look presets — one chip per .drx file in
+    /// ~/ResolveRemote/Looks on the Mac.
+    private var looksRow: some View {
+        VStack(spacing: 4) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Text("LOOKS")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1)
+                        .foregroundColor(Color(white: 0.45))
+
+                    if let presets = connection.presets, !presets.isEmpty {
+                        ForEach(presets, id: \.self) { name in
+                            presetChip(name)
+                        }
+                    } else {
+                        Text("Drop .drx files in ~/ResolveRemote/Looks")
+                            .font(.caption2)
+                            .foregroundColor(Color(white: 0.45))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color(white: 0.1))
+                            .clipShape(Capsule())
+                    }
+
+                    Button {
+                        HapticsEngine.shared.buttonTap()
+                        requestPresets()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                            .foregroundColor(Color(white: 0.6))
+                            .padding(8)
+                            .background(Color(white: 0.15))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if let presetError {
+                Text(presetError)
+                    .font(.caption2)
+                    .foregroundColor(.red)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+    }
+
+    private func presetChip(_ name: String) -> some View {
+        let isApplied = appliedPreset == name
+        return Button {
+            HapticsEngine.shared.buttonTap()
+            connection.send(cmd: CommandName.applyPreset, mode: "color", name: name)
+        } label: {
+            Text(name)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(isApplied ? Color(red: 0.4, green: 0.85, blue: 0.5) : Color(white: 0.15))
+                .foregroundColor(isApplied ? .black : .white)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private func readoutRow(label: String, value: Double?, accent: Color, resetTarget: String) -> some View {
@@ -285,6 +408,10 @@ struct ColorModeView: View {
 
     private func requestStatus() {
         connection.send(cmd: CommandName.colorStatus, mode: "color")
+    }
+
+    private func requestPresets() {
+        connection.send(cmd: CommandName.listPresets, mode: "color")
     }
 
     private func sendReset(_ resetTarget: String) {

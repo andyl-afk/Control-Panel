@@ -37,6 +37,11 @@ final class RemoteConnection: ObservableObject {
     @Published private(set) var lastError: String?
     /// Latest colour sidecar state from the helper (color_state messages).
     @Published private(set) var colorState: ColorState?
+    /// Latest preset list from the helper (nil until first requested).
+    @Published private(set) var presets: [String]?
+    /// One-shot results; each reply gets a fresh id so onChange always fires.
+    @Published private(set) var presetResult: PresetResult?
+    @Published private(set) var stillResult: StillResult?
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -98,7 +103,8 @@ final class RemoteConnection: ObservableObject {
         steps: Int? = nil,
         speed: Double? = nil,
         param: String? = nil,
-        enabled: Bool? = nil
+        enabled: Bool? = nil,
+        name: String? = nil
     ) {
         guard isConnected, let connection else { return }
 
@@ -115,6 +121,7 @@ final class RemoteConnection: ObservableObject {
             speed: speed,
             param: param,
             enabled: enabled,
+            name: name,
             ts: Date().timeIntervalSince1970
         )
 
@@ -191,16 +198,44 @@ final class RemoteConnection: ObservableObject {
         }
     }
 
-    /// Parse newline-delimited JSON replies from the helper (currently only
-    /// color_state). Unknown or malformed lines are ignored.
+    /// Parse newline-delimited JSON replies from the helper. Unknown or
+    /// malformed lines are ignored.
     private func handleIncoming(_ data: Data) {
         receiveBuffer.append(data)
         while let newline = receiveBuffer.firstIndex(of: UInt8(ascii: "\n")) {
             let lineData = Data(receiveBuffer[receiveBuffer.startIndex..<newline])
             receiveBuffer.removeSubrange(receiveBuffer.startIndex...newline)
-            guard let state = try? decoder.decode(ColorState.self, from: lineData),
-                  state.cmd == "color_state" else { continue }
+            handleLine(lineData)
+        }
+    }
+
+    /// Everything the helper can send, decoded leniently in one shape.
+    private struct Reply: Decodable {
+        let cmd: String
+        let presets: [String]?
+        let name: String?
+        let ok: Bool?
+        let reason: String?
+    }
+
+    private func handleLine(_ lineData: Data) {
+        guard let reply = try? decoder.decode(Reply.self, from: lineData) else { return }
+        switch reply.cmd {
+        case "color_state":
+            guard let state = try? decoder.decode(ColorState.self, from: lineData) else { return }
             DispatchQueue.main.async { self.colorState = state }
+        case "preset_list":
+            let presets = reply.presets ?? []
+            DispatchQueue.main.async { self.presets = presets }
+        case "preset_applied":
+            let result = PresetResult(id: UUID(), name: reply.name ?? "?",
+                                      ok: reply.ok ?? false, reason: reply.reason)
+            DispatchQueue.main.async { self.presetResult = result }
+        case "still_grabbed":
+            let result = StillResult(id: UUID(), ok: reply.ok ?? false)
+            DispatchQueue.main.async { self.stillResult = result }
+        default:
+            break
         }
     }
 

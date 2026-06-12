@@ -17,6 +17,7 @@ struct Command: Encodable {
     let speed: Double?
     let param: String?
     let enabled: Bool?
+    let name: String?
     let ts: Double
 }
 
@@ -36,6 +37,21 @@ struct ColorState: Decodable, Equatable {
     let contrast: Double?
     let pivot: Double?
     let reason: String?
+}
+
+/// Result of an apply_preset request. `id` makes every reply distinct so
+/// views can react with onChange even when the same preset is re-applied.
+struct PresetResult: Equatable {
+    let id: UUID
+    let name: String
+    let ok: Bool
+    let reason: String?
+}
+
+/// Result of a grab_still request.
+struct StillResult: Equatable {
+    let id: UUID
+    let ok: Bool
 }
 
 /// Command names understood by the Phase 1 helper. Using constants instead of
@@ -64,4 +80,7 @@ enum CommandName {
     static let colorReset = "color_reset"
     static let colorStatus = "color_status"
     static let bypass = "bypass"
+    static let listPresets = "list_presets"
+    static let applyPreset = "apply_preset"
+    static let grabStill = "grab_still"
 }

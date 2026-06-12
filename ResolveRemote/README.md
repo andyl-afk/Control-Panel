@@ -184,6 +184,32 @@ overwrites that grade** with the helper's values (defaults, for a clip it
 hasn't touched). This is a known v1 limitation — use Resolve's undo if it
 bites you.
 
+### Looks (Phase 4)
+
+Look presets are plain `.drx` files in **`~/ResolveRemote/Looks/`** on the
+Mac (the sidecar creates the folder on startup). The folder *is* the
+management UI — there is nothing to configure on the phone.
+
+**Saving a look from Resolve:**
+
+1. On the Color page, grade a clip, then grab a still into the Gallery
+   (right-click the viewer → Grab Still).
+2. In the Gallery, right-click the still → **Export**, and save it into
+   `~/ResolveRemote/Looks/` with a meaningful filename — Resolve writes a
+   `.drx` alongside the image. Only the `.drx` matters here.
+3. The filename (without extension) is the button name on the phone. Tap
+   the refresh icon in the LOOKS row to pick up new files.
+
+**What applying a look does:** `ApplyGradeFromDRX` replaces the clip's whole
+node grade with the preset, and the app's wheel/knob trim layer resets to
+neutral — the look becomes the new base, and any wheel or knob movement
+afterwards trims on top of it.
+
+**Why looks matter:** a `.drx` can contain *anything* Resolve can grade —
+curves, power windows, mid-detail, noise reduction, multiple nodes and
+corrections. This is how you reach controls the scripting API doesn't
+expose: build the look in Resolve once, fire it from the phone.
+
 ### Colour "unavailable" reasons
 
 | Reason shown on the phone | Meaning |
