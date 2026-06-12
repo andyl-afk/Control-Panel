@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The main Phase 1 screen: connection panel, EDIT title, mode selector,
 /// speed slider, jog wheel, transport row, and shortcut grid.
@@ -46,6 +47,10 @@ struct EditModeView: View {
         }
         .onAppear {
             HapticsEngine.shared.prepare()
+        }
+        .onChange(of: connection.state) { _, newState in
+            // Keep the screen from auto-locking mid-edit while connected.
+            UIApplication.shared.isIdleTimerDisabled = (newState == .connected)
         }
     }
 

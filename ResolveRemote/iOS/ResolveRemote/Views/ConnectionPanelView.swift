@@ -10,8 +10,10 @@ struct ConnectionPanelView: View {
         case port
     }
 
-    @State private var host = ""
-    @State private var portText = "49321"
+    // Persisted so the fields are pre-filled on next launch and the app can
+    // auto-connect (ResolveRemoteApp reads the same keys).
+    @AppStorage("hostIP") private var host = ""
+    @AppStorage("portText") private var portText = "49321"
     @FocusState private var focusedField: Field?
 
     var body: some View {
@@ -54,7 +56,7 @@ struct ConnectionPanelView: View {
                 Text(connection.state.label)
                     .font(.caption2)
                     .foregroundColor(statusColor)
-                if case .error = connection.state, let message = connection.lastError {
+                if showsErrorDetail, let message = connection.lastError {
                     Text("— \(message)")
                         .font(.caption2)
                         .foregroundColor(.red)
@@ -76,17 +78,30 @@ struct ConnectionPanelView: View {
 
     private var buttonTitle: String {
         switch connection.state {
-        case .connected, .connecting: return "Disconnect"
-        case .disconnected, .error:   return "Connect"
+        case .connected, .connecting, .reconnecting:
+            return "Disconnect"
+        case .disconnected, .error:
+            // After a failed reconnect run, offer Retry against the saved
+            // endpoint; otherwise it's a plain first Connect.
+            return connection.lastError != nil && !host.isEmpty ? "Retry" : "Connect"
         }
     }
 
     private var statusColor: Color {
         switch connection.state {
-        case .connected:    return .green
-        case .connecting:   return .yellow
-        case .disconnected: return .gray
-        case .error:        return .red
+        case .connected:                  return .green
+        case .connecting, .reconnecting:  return .yellow
+        case .disconnected:               return .gray
+        case .error:                      return .red
+        }
+    }
+
+    /// Show the failure reason when we're not in (or heading toward) a
+    /// working connection.
+    private var showsErrorDetail: Bool {
+        switch connection.state {
+        case .disconnected, .error: return connection.lastError != nil
+        case .connecting, .reconnecting, .connected: return false
         }
     }
 
@@ -100,7 +115,7 @@ struct ConnectionPanelView: View {
         focusedField = nil
         HapticsEngine.shared.buttonTap()
         switch connection.state {
-        case .connected, .connecting:
+        case .connected, .connecting, .reconnecting:
             connection.disconnect()
         case .disconnected, .error:
             let port = UInt16(portText) ?? 49321

@@ -47,8 +47,23 @@ done with the helper in dry-run mode.
   Helper logs "ignoring malformed JSON" twice and keeps serving.
 
 - [ ] **Helper can be restarted and app reconnects.**
-  Ctrl-C the helper → app shows an error state. Start the helper again,
-  tap Connect → green again, commands flow.
+  Ctrl-C the helper → app shows "Reconnecting…" and retries (immediately,
+  then every 2 s, 5 attempts). Start the helper again within that window →
+  green by itself. If the retries ran out, tap Retry (or background and
+  foreground the app) → green again, commands flow.
+
+- [ ] **Kill and relaunch the app: connects by itself.**
+  Swipe the app away, reopen it. Host/port fields are pre-filled from the
+  last session and the app auto-connects without any taps.
+
+- [ ] **Switch away and back: reconnected within ~2 s.**
+  Go to another app (connection is torn down cleanly in the background;
+  helper logs the disconnect), come back — the app reconnects on its own
+  within a couple of seconds. No haptic spam while it does.
+
+- [ ] **Screen does not auto-lock while connected.**
+  Stay connected and leave the phone untouched past its auto-lock time —
+  the screen stays on. Disconnect, and normal auto-lock applies again.
 
 - [ ] **send-keys mode sends Space/Arrow keys into TextEdit first.**
   `swift run ResolveHelper --send-keys` (banner shows Accessibility is

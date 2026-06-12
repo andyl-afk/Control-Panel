@@ -7,11 +7,18 @@ import Network
 /// All published state changes happen on the main thread so views can bind
 /// to them directly. Sending while disconnected is silently ignored — the UI
 /// shows the connection state instead.
+///
+/// When an established connection drops (or a connect attempt fails), the
+/// class retries on its own: immediately, then every `reconnectDelay`
+/// seconds, up to `maxReconnectAttempts` times, before giving up and
+/// settling on `.disconnected` (the UI then offers Retry). Reconnects are
+/// silent — no haptics fire for automatic attempts.
 final class RemoteConnection: ObservableObject {
 
     enum State: Equatable {
         case disconnected
         case connecting
+        case reconnecting
         case connected
         case error(String)
 
@@ -19,6 +26,7 @@ final class RemoteConnection: ObservableObject {
             switch self {
             case .disconnected: return "Disconnected"
             case .connecting:   return "Connecting…"
+            case .reconnecting: return "Reconnecting…"
             case .connected:    return "Connected"
             case .error:        return "Error"
             }
@@ -29,60 +37,48 @@ final class RemoteConnection: ObservableObject {
     @Published private(set) var lastError: String?
 
     var isConnected: Bool { state == .connected }
+    /// True when there is a remembered endpoint a Retry can go back to.
+    var hasEndpoint: Bool { host != nil }
 
     private var connection: NWConnection?
     private var seq = 0
     private let queue = DispatchQueue(label: "resolve-remote.connection")
     private let encoder = JSONEncoder()
 
+    // Reconnect policy
+    private var host: String?
+    private var port: UInt16 = 49321
+    private var reconnectAttempts = 0
+    private let maxReconnectAttempts = 5
+    private let reconnectDelay: TimeInterval = 2
+    private var pendingReconnect: DispatchWorkItem?
+
     // MARK: - Connect / disconnect
 
+    /// User-initiated connect (Connect/Retry button, auto-connect on launch
+    /// and foreground). Resets the retry budget.
     func connect(host: String, port: UInt16) {
-        disconnect()
-
         let trimmedHost = host.trimmingCharacters(in: .whitespaces)
         guard !trimmedHost.isEmpty else {
             setState(.error("Enter the Mac's IP address"))
             return
         }
-        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
-            setState(.error("Invalid port"))
-            return
-        }
 
-        let connection = NWConnection(host: NWEndpoint.Host(trimmedHost), port: nwPort, using: .tcp)
-        self.connection = connection
-        setState(.connecting)
-
-        connection.stateUpdateHandler = { [weak self] nwState in
-            guard let self, self.connection === connection else { return }
-            switch nwState {
-            case .ready:
-                self.setState(.connected)
-            case .waiting(let error):
-                // Still retrying under the hood; surface why.
-                self.setState(.error(Self.describe(error)))
-            case .failed(let error):
-                self.setState(.error(Self.describe(error)))
-                connection.cancel()
-            case .cancelled:
-                self.setState(.disconnected)
-            default:
-                break
-            }
-        }
-
-        // The helper never sends data, but keeping a receive pending lets us
-        // notice immediately when it goes away.
-        receive(on: connection)
-        connection.start(queue: queue)
+        self.host = trimmedHost
+        self.port = port
+        cancelPendingReconnect()
+        reconnectAttempts = 0
+        DispatchQueue.main.async { self.lastError = nil }
+        open(asReconnect: false)
     }
 
+    /// User-initiated disconnect (button, or app entering background).
+    /// Stops any reconnect loop and tears the socket down cleanly.
     func disconnect() {
-        guard let connection else { return }
-        self.connection = nil
-        connection.stateUpdateHandler = nil
-        connection.cancel()
+        cancelPendingReconnect()
+        reconnectAttempts = 0
+        teardown()
+        DispatchQueue.main.async { self.lastError = nil }
         setState(.disconnected)
     }
 
@@ -102,6 +98,7 @@ final class RemoteConnection: ObservableObject {
             level: level,
             ts: Date().timeIntervalSince1970
         )
+
         // Encode and send on the connection's queue so callers (gesture
         // handlers, timers) never block on JSON work.
         queue.async { [encoder] in
@@ -111,26 +108,93 @@ final class RemoteConnection: ObservableObject {
             connection.send(content: data, completion: .contentProcessed { [weak self] error in
                 guard let self, self.connection === connection else { return }
                 if let error {
-                    self.setState(.error(Self.describe(error)))
-                    connection.cancel()
+                    self.handleDrop(reason: Self.describe(error))
                 }
             })
         }
     }
 
-    // MARK: - Private
+    // MARK: - Connection lifecycle
+
+    private func open(asReconnect: Bool) {
+        teardown()
+
+        guard let host, let nwPort = NWEndpoint.Port(rawValue: port) else {
+            setState(.error("Invalid port"))
+            return
+        }
+
+        setState(asReconnect ? .reconnecting : .connecting)
+
+        let connection = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        self.connection = connection
+
+        connection.stateUpdateHandler = { [weak self] nwState in
+            guard let self, self.connection === connection else { return }
+            switch nwState {
+            case .ready:
+                self.reconnectAttempts = 0
+                self.setState(.connected)
+            case .waiting(let error), .failed(let error):
+                // .waiting means NWConnection would keep retrying internally;
+                // we cancel and run our own bounded retry loop instead.
+                self.handleDrop(reason: Self.describe(error))
+            case .cancelled:
+                break // cancels are always driven by us
+            default:
+                break
+            }
+        }
+
+        // The helper never sends data, but keeping a receive pending lets us
+        // notice immediately when it goes away.
+        receive(on: connection)
+        connection.start(queue: queue)
+    }
+
+    private func teardown() {
+        guard let connection else { return }
+        self.connection = nil
+        connection.stateUpdateHandler = nil
+        connection.cancel()
+    }
 
     private func receive(on connection: NWConnection) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] _, _, isComplete, error in
             guard let self, self.connection === connection else { return }
             if isComplete || error != nil {
-                self.setState(.error("Helper closed the connection"))
-                self.connection = nil
-                connection.cancel()
+                self.handleDrop(reason: "Helper closed the connection")
                 return
             }
             self.receive(on: connection)
         }
+    }
+
+    /// The connection failed or dropped without the user asking — tear it
+    /// down and schedule the next reconnect attempt (or give up).
+    private func handleDrop(reason: String) {
+        teardown()
+        DispatchQueue.main.async { self.lastError = reason }
+
+        guard reconnectAttempts < maxReconnectAttempts else {
+            setState(.disconnected) // UI shows Retry alongside the last error
+            return
+        }
+        reconnectAttempts += 1
+        setState(.reconnecting)
+
+        // First attempt fires immediately, the rest every `reconnectDelay`.
+        let delay: TimeInterval = reconnectAttempts == 1 ? 0 : reconnectDelay
+        let work = DispatchWorkItem { [weak self] in
+            self?.open(asReconnect: true)
+        }
+        pendingReconnect = work
+        queue.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func cancelPendingReconnect() {
+        pendingReconnect?.cancel()
+        pendingReconnect = nil
     }
 
     private func setState(_ newState: State) {
