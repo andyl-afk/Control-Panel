@@ -43,6 +43,14 @@ struct ColorModeView: View {
     private let gammaStep = 0.005  // mirrors STEP_GAMMA (wheel-inverted)
     private let gainStep = 0.005   // mirrors STEP_SLOPE
 
+    /// Trackball: balance units per screen point (multiplied by speed).
+    private let trackballSensitivity = 0.004
+
+    /// Batches trackball deltas to at most 30 balance_delta sends a second.
+    @State private var balanceBatcher = VectorBatcher()
+    /// Last seen balance magnitude for the visible target (ring haptics).
+    @State private var lastBalanceMagnitude = 0.0
+
     private var colorState: ColorState? { connection.colorState }
     private var colorAvailable: Bool { colorState?.available == true }
 
@@ -101,6 +109,34 @@ struct ColorModeView: View {
             if result?.ok == true {
                 HapticsEngine.shared.heavyBump()
             }
+        }
+        .onChange(of: connection.colorState) { _, _ in
+            updateBalanceHaptics()
+        }
+        .onChange(of: page) { _, _ in
+            // Re-seed so switching pages never fires a spurious ring tick.
+            lastBalanceMagnitude = balanceMagnitude
+        }
+    }
+
+    /// wheelTick when the applied balance magnitude crosses a 0.1 ring;
+    /// heavyBump when it hits the 1.0 clamp. Driven from color_state so the
+    /// haptics describe what the sidecar actually applied.
+    private var balanceMagnitude: Double {
+        let balance = currentBalance
+        return Double(hypot(balance.x, balance.y))
+    }
+
+    private func updateBalanceHaptics() {
+        let magnitude = balanceMagnitude
+        defer { lastBalanceMagnitude = magnitude }
+
+        if magnitude >= 0.999 {
+            if lastBalanceMagnitude < 0.999 {
+                HapticsEngine.shared.heavyBump()
+            }
+        } else if Int(magnitude * 10) != Int(lastBalanceMagnitude * 10) {
+            HapticsEngine.shared.wheelTick()
         }
     }
 
@@ -173,9 +209,12 @@ struct ColorModeView: View {
         .buttonStyle(.plain)
     }
 
-    /// One edit-sized dial paged across the three targets. Swipe-vs-rotate
-    /// arbitration lives inside DialView; `.id(page)` gives each target a
-    /// fresh dial so no gesture state bleeds across pages.
+    /// One edit-sized grading wheel paged across the three targets:
+    /// cap = trackball balance, ring = master, two-finger rotate = master.
+    /// DialView's circle claims every touch inside the dial, so the page
+    /// swipe on the container below is only reachable from the margins
+    /// outside the circle (or the segmented labels). `.id(page)` gives each
+    /// target a fresh dial so no gesture state bleeds across pages.
     private var dialZone: some View {
         ZStack {
             // Faint accent wash behind the primary dial.
@@ -189,6 +228,7 @@ struct ColorModeView: View {
                 speed: 1.0, // badge speed travels in the command instead
                 accent: page.accent,
                 indicatorAngle: indicatorAngle(for: page),
+                balance: currentBalance,
                 onTicks: { ticks in
                     connection.send(
                         cmd: CommandName.colorDelta,
@@ -198,13 +238,69 @@ struct ColorModeView: View {
                         speed: speed
                     )
                 },
-                onSwipe: { direction in
-                    changePage(by: direction)
+                onBalance: { dx, dy in
+                    let scale = trackballSensitivity * speed
+                    balanceBatcher.onFlush = { [page, speed] x, y in
+                        connection.send(
+                            cmd: CommandName.balanceDelta,
+                            mode: "color",
+                            target: page.rawValue,
+                            speed: speed,
+                            dx: x,
+                            dy: y
+                        )
+                    }
+                    balanceBatcher.add(Double(dx) * scale, Double(dy) * scale)
+                },
+                onBalanceDoubleTap: {
+                    resetBalanceOnly()
                 }
             )
             .id(page)
             .padding(.horizontal, 26) // ~80% of screen width, like Edit
         }
+        .contentShape(Rectangle())
+        .gesture(pageSwipeGesture)
+    }
+
+    /// Page swipe, claimable only from outside the dial circle (the dial's
+    /// own gesture wins inside it).
+    private var pageSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 25)
+            .onEnded { value in
+                let h = value.translation.width
+                let v = value.translation.height
+                guard abs(h) > 50, abs(h) > abs(v) * 1.5 else { return }
+                changePage(by: h < 0 ? 1 : -1)
+            }
+    }
+
+    /// Current target's balance vector from the sidecar's color_state.
+    private var currentBalance: CGPoint {
+        let vector: [Double]?
+        switch page {
+        case .lift:  vector = colorState?.lift_bal
+        case .gamma: vector = colorState?.gamma_bal
+        case .gain:  vector = colorState?.gain_bal
+        }
+        guard let vector, vector.count == 2 else { return .zero }
+        return CGPoint(x: vector[0], y: vector[1])
+    }
+
+    /// Double-tap on the cap: zero the balance without touching the master.
+    /// No new protocol — sends the exact negative of the current vector.
+    private func resetBalanceOnly() {
+        HapticsEngine.shared.heavyBump()
+        let balance = currentBalance
+        guard balance != .zero else { return }
+        connection.send(
+            cmd: CommandName.balanceDelta,
+            mode: "color",
+            target: page.rawValue,
+            speed: 1.0,
+            dx: -Double(balance.x),
+            dy: -Double(balance.y)
+        )
     }
 
     /// Large readout for the visible target, with its reset beside it.

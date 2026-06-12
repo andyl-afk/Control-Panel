@@ -21,6 +21,7 @@ CDL with the shadow state — a known limitation.
 """
 
 import json
+import math
 import os
 import queue
 import sys
@@ -44,6 +45,11 @@ STEP_PIVOT = 0.005     # param_delta pivot
 # How strongly temp/tint skew the slope channels.
 TEMP_STRENGTH = 0.3
 TINT_STRENGTH = 0.3
+
+# How strongly a full-magnitude trackball balance deflects each parameter.
+BAL_LIFT_STRENGTH = 0.15    # additive on offset
+BAL_GAIN_STRENGTH = 0.25    # multiplicative on slope
+BAL_GAMMA_STRENGTH = 0.25   # multiplicative on power (inverted, like master)
 
 # Wheel-right on GAMMA must brighten midtones, and CDL Power gets *smaller*
 # as midtones brighten — so gamma wheel ticks are inverted before applying.
@@ -106,6 +112,23 @@ KNOB_PARAMS = {
     "pivot": ("pivot", STEP_PIVOT, CLAMP_PIVOT),
 }
 
+# color_delta target -> balance vector key (trackball, Phase 7).
+BALANCE_KEYS = {
+    "lift": "bal_lift",
+    "gamma": "bal_gamma",
+    "gain": "bal_gain",
+}
+
+
+def fresh_state():
+    """A new clip's shadow state. Balance vectors are created per call so
+    list instances are never shared between clips."""
+    state = dict(USER_DEFAULTS)
+    for key in BALANCE_KEYS.values():
+        state[key] = [0.0, 0.0]
+    return state
+
+
 # color_reset target -> state key ("all" handled separately)
 RESET_TARGETS = {
     "lift": "lift_m",
@@ -124,11 +147,40 @@ def clamped(value, bounds):
     return max(low, min(high, value))
 
 
+def clamp_balance(vec):
+    """Clamp a balance vector's magnitude to 1.0, preserving direction."""
+    magnitude = math.hypot(vec[0], vec[1])
+    if magnitude > 1.0:
+        vec[0] /= magnitude
+        vec[1] /= magnitude
+    return vec
+
+
+def _balance_weights(vec):
+    """Per-channel weights for a trackball balance vector.
+
+    RED sits at the top of the wheel and the hue axes are 120 degrees
+    apart. The three weights always sum to zero, so a balance shifts hue
+    without shifting overall level — that invariant is what makes the
+    trackball feel like a panel trackball and not a gain knob.
+    """
+    x, y = vec[0], vec[1]
+    magnitude = math.hypot(x, y)
+    if magnitude == 0.0:
+        return 0.0, (0.0, 0.0, 0.0)
+    theta = math.atan2(y, x)
+    w_r = math.cos(theta - math.radians(90))
+    w_g = math.cos(theta - math.radians(210))
+    w_b = math.cos(theta - math.radians(330))
+    return magnitude, (w_r, w_g, w_b)
+
+
 def compose_cdl(params):
     """Pure function: user parameters -> SetCDL payload dict.
 
     Composition order (per spec):
       1. base RGB triplets from the masters
+      1.5 trackball balance per parameter (zero-sum hue weights)
       2. temperature skews slope R/B
       3. tint skews slope G (and counters on R/B)
       4. contrast scales slope and re-anchors offset around the pivot
@@ -138,6 +190,16 @@ def compose_cdl(params):
     offset = [params["lift_m"]] * 3
     # gamma_m already holds the (wheel-inverted) CDL power value.
     power = [params["gamma_m"]] * 3
+
+    # Step 1.5 — trackball balance. Lift is additive on offset; gain is
+    # multiplicative on slope; gamma is multiplicative on power with the
+    # same inversion convention as the master gamma wheel.
+    m, w = _balance_weights(params.get("bal_lift", (0.0, 0.0)))
+    offset = [offset[i] + m * w[i] * BAL_LIFT_STRENGTH for i in range(3)]
+    m, w = _balance_weights(params.get("bal_gain", (0.0, 0.0)))
+    slope = [slope[i] * (1 + m * w[i] * BAL_GAIN_STRENGTH) for i in range(3)]
+    m, w = _balance_weights(params.get("bal_gamma", (0.0, 0.0)))
+    power = [power[i] * (1 - m * w[i] * BAL_GAMMA_STRENGTH) for i in range(3)]
 
     temp = params["temp"]
     slope[0] *= (1 + temp * TEMP_STRENGTH)
@@ -263,7 +325,7 @@ class ColorEngine:
         uid = item.GetUniqueId()
         if uid != self.current_uid:
             self.current_uid = uid
-            self.states.setdefault(uid, dict(USER_DEFAULTS))
+            self.states.setdefault(uid, fresh_state())
         return self.states[self.current_uid]
 
     # -- bypass (hold-to-compare) -------------------------------------------
@@ -354,14 +416,30 @@ class ColorEngine:
                 speed = cmd.get("speed") or 1.0
                 state[key] = clamped(state[key] + steps * step * speed, clamp)
                 changed = True
+            elif name == "balance_delta":
+                bal_key = BALANCE_KEYS.get(cmd.get("target"))
+                if bal_key is None:
+                    log("unknown balance_delta target: %r" % cmd.get("target"))
+                    continue
+                # The phone pre-multiplies sensitivity and speed into dx/dy,
+                # so they are applied here as-is.
+                vec = state[bal_key]
+                vec[0] += cmd.get("dx") or 0.0
+                vec[1] += cmd.get("dy") or 0.0
+                clamp_balance(vec)
+                changed = True
             elif name == "color_reset":
                 target = cmd.get("target")
                 if target == "all":
-                    state.update(USER_DEFAULTS)
+                    state.update(fresh_state())
                     changed = True
                 elif target in RESET_TARGETS:
                     key = RESET_TARGETS[target]
                     state[key] = USER_DEFAULTS[key]
+                    # Master targets also clear their balance vector.
+                    bal_key = BALANCE_KEYS.get(target)
+                    if bal_key:
+                        state[bal_key] = [0.0, 0.0]
                     changed = True
                 else:
                     log("unknown color_reset target: %r" % target)
@@ -479,6 +557,10 @@ class ColorEngine:
                 clip_name = item.GetName()
             except Exception:
                 pass
+            def bal(key):
+                vec = state.get(key, (0.0, 0.0))
+                return [round(vec[0], 6), round(vec[1], 6)]
+
             emit({
                 "v": 1,
                 "cmd": "color_state",
@@ -492,6 +574,9 @@ class ColorEngine:
                 "tint": round(state["tint"], 6),
                 "contrast": round(state["contrast"], 6),
                 "pivot": round(state["pivot"], 6),
+                "lift_bal": bal("bal_lift"),
+                "gamma_bal": bal("bal_gamma"),
+                "gain_bal": bal("bal_gain"),
             })
         else:
             emit({"v": 1, "cmd": "color_state", "available": False, "reason": reason})

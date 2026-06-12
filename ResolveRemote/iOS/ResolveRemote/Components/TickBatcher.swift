@@ -40,3 +40,49 @@ final class TickBatcher {
         onFlush?(sum)
     }
 }
+
+/// Float-pair sibling of TickBatcher for trackball balance deltas: sums
+/// dx/dy and flushes at most `ratePerSecond` times a second. The timer
+/// stops itself once a flush finds nothing pending.
+final class VectorBatcher {
+    var onFlush: ((Double, Double) -> Void)?
+
+    private let interval: TimeInterval
+    private var dx = 0.0
+    private var dy = 0.0
+    private var timer: Timer?
+
+    init(ratePerSecond: Double = 30) {
+        self.interval = 1.0 / ratePerSecond
+    }
+
+    func add(_ x: Double, _ y: Double) {
+        dx += x
+        dy += y
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            if !self.flush() {
+                self.timer?.invalidate()
+                self.timer = nil
+            }
+        }
+    }
+
+    func finish() {
+        _ = flush()
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @discardableResult
+    private func flush() -> Bool {
+        guard dx != 0 || dy != 0 else { return false }
+        let x = dx
+        let y = dy
+        dx = 0
+        dy = 0
+        onFlush?(x, y)
+        return true
+    }
+}

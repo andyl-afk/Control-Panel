@@ -18,6 +18,8 @@ struct Command: Encodable {
     let param: String?
     let enabled: Bool?
     let name: String?
+    let dx: Double?
+    let dy: Double?
     let ts: Double
 }
 
@@ -36,6 +38,10 @@ struct ColorState: Decodable, Equatable {
     let tint: Double?
     let contrast: Double?
     let pivot: Double?
+    // Trackball balance vectors, [x, y] with magnitude <= 1.
+    let lift_bal: [Double]?
+    let gamma_bal: [Double]?
+    let gain_bal: [Double]?
     let reason: String?
 }
 
@@ -76,6 +82,7 @@ enum CommandName {
 
     // Colour mode (mode: "color")
     static let colorDelta = "color_delta"
+    static let balanceDelta = "balance_delta"
     static let paramDelta = "param_delta"
     static let colorReset = "color_reset"
     static let colorStatus = "color_status"

@@ -2,19 +2,19 @@ import SwiftUI
 
 /// The one dial. Powers the Edit wheel, the paged Colour dial, and the five
 /// small knobs — same gesture-to-ticks and TickBatcher plumbing as before,
-/// drawn as machined hardware (Phase 6 premium pass). Gradients only.
+/// drawn as machined hardware. Gradients only.
 ///
 /// Interaction styles:
 /// - `.rotary`: endless circular drag (with the Edit tab's JOG/SCRUB/SHUTTLE
 ///   behaviours when `mode` is set).
 /// - `.vertical`: drag up/down for the small knobs; double-tap resets.
 ///
-/// When `onSwipe` is set (the Colour pager), new drags start undecided and
-/// no ticks are emitted until the gesture proves itself: curving or vertical
-/// movement becomes rotation (the withheld arc is replayed so nothing is
-/// lost); a fast straight horizontal run becomes a page swipe. A circular
-/// path at dial radius drops vertically faster than the swipe threshold
-/// allows, so vigorous grading can never change the page.
+/// Trackball configuration (Phase 7, the big Colour dial): pass `onBalance`
+/// and the dial becomes a full grading wheel — a drag starting INSIDE the
+/// knob cap is a 2D trackball emitting raw point deltas (screen up = +dy);
+/// a drag starting OUTSIDE the cap is the usual rotary master; a two-finger
+/// rotation anywhere is also the master. The puck is driven by `balance`
+/// (sidecar state), never by local gesture state.
 struct DialView: View {
     enum InteractionStyle {
         case rotary
@@ -30,13 +30,17 @@ struct DialView: View {
     var accentSecondary: Color?
     /// External indicator override in degrees (0 = 12 o'clock).
     var indicatorAngle: Double?
+    /// Puck position in balance units (|v| <= 1), from color_state.
+    var balance: CGPoint?
     /// Batched: summed ticks/steps at most 30 times a second.
     var onTicks: (Int) -> Void
     var onShuttle: (Int) -> Void = { _ in }
-    /// Double-tap reset (small knobs). The caller owns haptics + command.
+    /// Double-tap reset (small knobs, whole dial). Caller owns haptics.
     var onDoubleTap: (() -> Void)?
-    /// Horizontal page swipe (+1 = next, -1 = previous). Colour pager only.
-    var onSwipe: ((Int) -> Void)?
+    /// Trackball: raw point deltas while dragging the cap (up = +dy).
+    var onBalance: ((CGFloat, CGFloat) -> Void)?
+    /// Double-tap on the cap (trackball config): reset balance only.
+    var onBalanceDoubleTap: (() -> Void)?
 
     // MARK: - Tunables
     private let baseDetentDegrees: Double = 12
@@ -45,18 +49,15 @@ struct DialView: View {
     private let maxShuttleLevel = 3
     private let pointsPerStepVertical: CGFloat = 8
     private let degreesPerStepVertical: Double = 5
-    // Swipe arbitration: a swipe must run this far horizontally while
-    // staying this flat. A true circular path at dial radius gains ~28pt of
-    // vertical drop over ~85pt of horizontal travel, so it always resolves
-    // to rotation first.
-    private let swipeMinTravel: CGFloat = 70
-    private let swipeMaxDrift: CGFloat = 22
-    private let rotaryDecisionTravel: CGFloat = 14
+    /// Two-finger rotation: degrees per master tick.
+    private let rotationDegreesPerTick: Double = 2.0
+    /// The cap (trackball area) radius as a fraction of dial size.
+    private let capFraction: CGFloat = 0.55
 
     private enum GesturePhase {
         case undecided
         case rotary
-        case swipe
+        case trackball
     }
 
     // MARK: - State
@@ -69,7 +70,11 @@ struct DialView: View {
     @State private var shuttleLevel = 0
     @State private var lastY: CGFloat?          // vertical: previous sample
     @State private var residualY: CGFloat = 0
+    @State private var lastBalancePoint: CGPoint? // trackball: previous sample
     @State private var phase: GesturePhase = .undecided
+    @State private var twoFingerActive = false
+    @State private var lastRotationDegrees: Double = 0
+    @State private var rotationResidual: Double = 0
     @State private var touched = false          // "awake" visual state
 
     var body: some View {
@@ -79,12 +84,14 @@ struct DialView: View {
                 .frame(width: size, height: size)
                 .contentShape(Circle())
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                .onTapGesture(count: 2) {
-                    guard let onDoubleTap else { return }
-                    internalRotation = 0
-                    onDoubleTap()
-                }
+                .gesture(
+                    SpatialTapGesture(count: 2)
+                        .onEnded { value in
+                            handleDoubleTap(at: value.location, size: size, geo: geo.size)
+                        }
+                )
                 .gesture(dragGesture(size: size, geo: geo.size))
+                .simultaneousGesture(rotationGesture)
                 .animation(.easeOut(duration: 0.15), value: touched)
         }
         .aspectRatio(1, contentMode: .fit)
@@ -102,6 +109,7 @@ struct DialView: View {
             endPoint: .trailing
         )
         let offNeutral = abs(indicatorAngle ?? internalRotation) > 0.5
+        let capSize = size * capFraction
 
         ZStack {
             // 1. Bezel: brushed-metal angular sweep, top-left key light, and
@@ -186,8 +194,8 @@ struct DialView: View {
                 .padding(size * (isLarge ? 0.12 : 0.09))
 
             // 5+6. Knob cap: offset specular highlight, upper rim light,
-            //      deep below-right drop shadow, and the indicator line
-            //      (accent glow only when off-neutral).
+            //      deep below-right drop shadow. The indicator line rotates;
+            //      the cap, crosshair, and puck stay fixed.
             ZStack {
                 Circle()
                     .fill(
@@ -215,14 +223,42 @@ struct DialView: View {
                         y: size * 0.022
                     )
 
-                Capsule()
-                    .fill(Color.white.opacity(offNeutral ? 1.0 : 0.9))
-                    .frame(width: 2, height: size * 0.55 * 0.36)
-                    .offset(y: -size * 0.55 * 0.26)
-                    .shadow(color: offNeutral ? accent.opacity(0.9) : .clear, radius: 3)
+                // Trackball crosshair under the indicator line.
+                if onBalance != nil {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: capSize * 0.88, height: 1)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 1, height: capSize * 0.88)
+                }
+
+                // Indicator line, rotating around the cap centre. Accent
+                // glow only when off-neutral.
+                ZStack {
+                    Capsule()
+                        .fill(Color.white.opacity(offNeutral ? 1.0 : 0.9))
+                        .frame(width: 2, height: capSize * 0.36)
+                        .offset(y: -capSize * 0.26)
+                        .shadow(color: offNeutral ? accent.opacity(0.9) : .clear, radius: 3)
+                }
+                .frame(width: capSize, height: capSize)
+                .rotationEffect(.degrees(indicatorAngle ?? internalRotation))
+
+                // Balance puck — sidecar state, not gesture state, so it
+                // always reflects what was actually applied.
+                if onBalance != nil, let balance {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: capSize * 0.13, height: capSize * 0.13)
+                        .shadow(color: accent.opacity(0.8), radius: 4)
+                        .offset(
+                            x: balance.x * capSize * 0.5 * 0.8,
+                            y: -balance.y * capSize * 0.5 * 0.8
+                        )
+                }
             }
-            .frame(width: size * 0.55, height: size * 0.55)
-            .rotationEffect(.degrees(indicatorAngle ?? internalRotation))
+            .frame(width: capSize, height: capSize)
 
             // 7. Bright accent dot fixed at 12 o'clock on the accent ring.
             Circle()
@@ -236,8 +272,9 @@ struct DialView: View {
     // MARK: - Gestures
 
     private func dragGesture(size: CGFloat, geo: CGSize) -> some Gesture {
-        // Vertical knobs need a little slack so double-taps can land.
-        DragGesture(minimumDistance: style == .vertical ? 2 : 0)
+        // Small knobs and the trackball dial leave slack for double-taps.
+        let minimumDistance: CGFloat = (style == .vertical || onBalanceDoubleTap != nil) ? 2 : 0
+        return DragGesture(minimumDistance: minimumDistance)
             .onChanged { value in
                 touched = true
                 switch style {
@@ -253,32 +290,100 @@ struct DialView: View {
             }
     }
 
-    private func handleRotaryChange(_ value: DragGesture.Value, size: CGFloat, geo: CGSize) {
-        // No pager attached: every drag is rotation, exactly as before.
-        guard onSwipe != nil else {
-            handleRotaryDrag(value, geo: geo)
+    /// Two-finger rotation = master value (trackball config only). While
+    /// two fingers are down, single-finger input is suspended.
+    private var rotationGesture: some Gesture {
+        RotateGesture()
+            .onChanged { value in
+                guard onBalance != nil else { return }
+                if !twoFingerActive {
+                    twoFingerActive = true
+                    touched = true
+                    // Drop single-finger seeds so the drag can't fire from
+                    // stale samples while (or right after) rotating.
+                    lastAngle = nil
+                    lastBalancePoint = nil
+                    phase = .undecided
+                }
+                let degrees = value.rotation.degrees
+                rotationResidual += degrees - lastRotationDegrees
+                lastRotationDegrees = degrees
+
+                let ticks = Int((rotationResidual / rotationDegreesPerTick).rounded(.towardZero))
+                guard ticks != 0 else { return }
+                rotationResidual -= Double(ticks) * rotationDegreesPerTick
+
+                HapticsEngine.shared.wheelTick()
+                if indicatorAngle == nil {
+                    internalRotation += Double(ticks) * rotationDegreesPerTick
+                }
+                batcher.onFlush = onTicks
+                batcher.add(ticks)
+            }
+            .onEnded { _ in
+                guard onBalance != nil else { return }
+                twoFingerActive = false
+                touched = false
+                lastRotationDegrees = 0
+                rotationResidual = 0
+                batcher.finish()
+            }
+    }
+
+    private func handleDoubleTap(at point: CGPoint, size: CGFloat, geo: CGSize) {
+        let center = CGPoint(x: geo.width / 2, y: geo.height / 2)
+        let distance = hypot(point.x - center.x, point.y - center.y)
+
+        if let onBalanceDoubleTap, onBalance != nil, distance <= size * capFraction / 2 {
+            onBalanceDoubleTap()
             return
+        }
+        if let onDoubleTap {
+            internalRotation = 0
+            onDoubleTap()
+        }
+    }
+
+    private func handleRotaryChange(_ value: DragGesture.Value, size: CGFloat, geo: CGSize) {
+        guard !twoFingerActive else { return }
+
+        if phase == .undecided {
+            // Routing is decided once, by where the touch began: inside the
+            // cap = trackball, outside = rotary. (Page swipes are claimed by
+            // the parent from outside the dial circle, never from here.)
+            let center = CGPoint(x: geo.width / 2, y: geo.height / 2)
+            let startDistance = hypot(
+                value.startLocation.x - center.x,
+                value.startLocation.y - center.y
+            )
+            if onBalance != nil && startDistance <= size * capFraction / 2 {
+                phase = .trackball
+                lastBalancePoint = value.startLocation
+            } else {
+                phase = .rotary
+                lastAngle = angle(of: value.startLocation, geo: geo)
+            }
         }
 
         switch phase {
+        case .trackball:
+            handleTrackballDrag(value)
         case .rotary:
             handleRotaryDrag(value, geo: geo)
-        case .swipe:
-            break // one page change per gesture; rest is ignored
         case .undecided:
-            let h = abs(value.translation.width)
-            let v = abs(value.translation.height)
-            if v > swipeMaxDrift || (max(h, v) > rotaryDecisionTravel && v > h * 0.5) {
-                // Curving or vertical: rotation. Replay the withheld arc by
-                // seeding the previous sample at the gesture's start point.
-                phase = .rotary
-                lastAngle = angle(of: value.startLocation, geo: geo)
-                handleRotaryDrag(value, geo: geo)
-            } else if h > swipeMinTravel && v < swipeMaxDrift {
-                phase = .swipe
-                onSwipe?(value.translation.width < 0 ? 1 : -1)
-            }
-            // else: not enough movement to call it — keep waiting.
+            break
+        }
+    }
+
+    private func handleTrackballDrag(_ value: DragGesture.Value) {
+        let point = value.location
+        defer { lastBalancePoint = point }
+        guard let last = lastBalancePoint else { return }
+
+        let dx = point.x - last.x
+        let dy = last.y - point.y // screen up = +dy
+        if dx != 0 || dy != 0 {
+            onBalance?(dx, dy)
         }
     }
 
@@ -371,6 +476,7 @@ struct DialView: View {
         accumulated = 0
         lastY = nil
         residualY = 0
+        lastBalancePoint = nil
         phase = .undecided
 
         // Flush straight away so the final ticks aren't delayed by the timer.
@@ -392,8 +498,14 @@ struct DialView: View {
 
 #Preview {
     VStack(spacing: 30) {
-        DialView(accent: Theme.editAccent, onTicks: { _ in })
-            .frame(width: 280, height: 280)
+        DialView(
+            accent: Theme.gain,
+            balance: CGPoint(x: 0.4, y: 0.3),
+            onTicks: { _ in },
+            onBalance: { _, _ in },
+            onBalanceDoubleTap: {}
+        )
+        .frame(width: 280, height: 280)
         HStack(spacing: 20) {
             DialView(style: .vertical, accent: Theme.tempCool, accentSecondary: Theme.tempWarm, onTicks: { _ in }, onDoubleTap: {})
                 .frame(width: 52, height: 52)
