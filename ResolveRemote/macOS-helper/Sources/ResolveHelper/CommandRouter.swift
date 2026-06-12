@@ -97,13 +97,11 @@ final class CommandRouter {
                 }
             }
 
-        // Resolve's default keys for previous/next edit point are Up/Down
-        // Arrow, which is a safe non-destructive default.
         case .prev_edit:
-            perform("press Up Arrow") { self.keySender.tap(.upArrow) }
+            perform("press U") { self.keySender.tap(.u) }
 
         case .next_edit:
-            perform("press Down Arrow") { self.keySender.tap(.downArrow) }
+            perform("press P") { self.keySender.tap(.p) }
 
         // The transport <</>> buttons still send these; the wheel's SHUTTLE
         // mode uses the "shuttle" command above instead.

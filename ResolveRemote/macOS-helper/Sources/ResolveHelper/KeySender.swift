@@ -34,6 +34,8 @@ final class KeySender {
         case j
         case k
         case l
+        case u
+        case p
 
         var code: CGKeyCode {
             switch self {
@@ -50,6 +52,8 @@ final class KeySender {
             case .j:             return 38  // kVK_ANSI_J
             case .k:             return 40  // kVK_ANSI_K
             case .l:             return 37  // kVK_ANSI_L
+            case .u:             return 32  // kVK_ANSI_U
+            case .p:             return 35  // kVK_ANSI_P
             }
         }
 
@@ -68,6 +72,8 @@ final class KeySender {
             case .j:             return "J"
             case .k:             return "K"
             case .l:             return "L"
+            case .u:             return "U"
+            case .p:             return "P"
             }
         }
     }
