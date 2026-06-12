@@ -531,10 +531,21 @@ class ColorEngine:
         return True
 
     def grab_still(self, timeline):
+        ok = False
         try:
-            ok = timeline.GrabStillFromCurrentVideoClip() is not None
+            # Resolve's Python bridge returns None (not AttributeError) for
+            # methods the running version doesn't have, so check callability.
+            # Current API: Timeline.GrabStill(); fall back to the older
+            # GrabStillFromCurrentVideoClip() name just in case.
+            grab = getattr(timeline, "GrabStill", None)
+            if not callable(grab):
+                grab = getattr(timeline, "GrabStillFromCurrentVideoClip", None)
+            if not callable(grab):
+                log("grab_still: this Resolve version exposes no still-grab API")
+            else:
+                ok = grab() is not None
         except Exception as exc:
-            log("GrabStillFromCurrentVideoClip failed: %s" % exc)
+            log("grab_still failed: %s" % exc)
             ok = False
         emit({"v": 1, "cmd": "still_grabbed", "ok": ok})
 
