@@ -15,32 +15,46 @@ struct EditModeView: View {
         ZStack {
             ThemeBackground()
 
-            VStack(spacing: 12) {
+            // Flexible layout: the dial zone absorbs spare height first (and
+            // gives it up first on small screens); the fixed sections keep
+            // their natural sizes.
+            VStack(spacing: 10) {
                 ScreenHeader(title: "EDIT", selectedTab: $selectedTab)
 
                 ModeSelector(selection: $wheelMode)
 
                 speedRow
 
-                DialView(
-                    mode: wheelMode,
-                    speed: speed,
-                    accent: Theme.editAccent,
-                    onTicks: { ticks in
-                        connection.send(cmd: CommandName.jog, ticks: ticks)
-                    },
-                    onShuttle: { level in
-                        connection.send(cmd: CommandName.shuttle, level: level)
-                    }
-                )
-                .frame(maxWidth: 280, maxHeight: 280)
-                .opacity(connection.isConnected ? 1 : 0.55)
+                ZStack {
+                    // Faint accent wash behind the primary dial.
+                    Circle()
+                        .fill(Theme.editAccent)
+                        .blur(radius: 70)
+                        .opacity(0.05)
+                        .scaleEffect(1.25)
+
+                    DialView(
+                        mode: wheelMode,
+                        speed: speed,
+                        accent: Theme.editAccent,
+                        onTicks: { ticks in
+                            connection.send(cmd: CommandName.jog, ticks: ticks)
+                        },
+                        onShuttle: { level in
+                            connection.send(cmd: CommandName.shuttle, level: level)
+                        }
+                    )
+                    .padding(.horizontal, 26) // ~80% of screen width
+                    .opacity(connection.isConnected ? 1 : 0.55)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 TransportBar(send: sendCommand)
 
                 ShortcutGrid(send: sendCommand)
             }
             .padding(.horizontal, 16)
+            .padding(.bottom, 6)
         }
         .onAppear {
             HapticsEngine.shared.prepare()

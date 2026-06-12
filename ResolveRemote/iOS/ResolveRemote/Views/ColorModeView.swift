@@ -25,6 +25,9 @@ struct ColorModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
     @Binding var selectedTab: AppTab
 
+    /// The visible pager target.
+    @State private var page: ColorTarget = .lift
+    /// Cycled by the speed badge (0.5x / 1.0x / 2.0x).
     @State private var speed: Double = 1.0
     @State private var comparing = false
     /// Name of the preset to briefly highlight after a successful apply.
@@ -105,79 +108,148 @@ struct ColorModeView: View {
 
     private var colorControls: some View {
         VStack(spacing: 8) {
-            wheelsSection
-                .frame(maxHeight: .infinity)
+            pagerRow
 
-            actionRow
+            dialZone
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            speedRow
+            readoutRow
 
             knobRow
 
             looksRow
+
+            actionRow // pinned at the bottom, just above the tab bar
         }
     }
 
-    /// Three stacked dial rows; the dial diameter adapts to whatever height
-    /// is left after the fixed-size sections below.
-    private var wheelsSection: some View {
-        GeometryReader { geo in
-            let rowSpacing: CGFloat = 6
-            let diameter = min(170, max(110, (geo.size.height - rowSpacing * 2) / 3))
-            VStack(spacing: rowSpacing) {
-                wheelRow(.lift, value: colorState?.lift, diameter: diameter)
-                wheelRow(.gamma, value: colorState?.gamma, diameter: diameter)
-                wheelRow(.gain, value: colorState?.gain, diameter: diameter)
+    /// LIFT / GAMMA / GAIN segments (tappable, doubling as the page
+    /// indicator) plus the cycling speed badge.
+    private var pagerRow: some View {
+        HStack(spacing: 6) {
+            ForEach(ColorTarget.allCases, id: \.self) { target in
+                Button {
+                    switchPage(to: target)
+                } label: {
+                    TrackedLabel(
+                        text: target.label,
+                        size: 10,
+                        color: page == target ? target.accent : Theme.textSecondary
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 34)
+                    .background(page == target ? Theme.surface : .clear)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().strokeBorder(
+                        page == target ? Theme.stroke : .clear, lineWidth: 1
+                    ))
+                }
+                .buttonStyle(.plain)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            speedBadge
         }
     }
 
-    private func wheelRow(_ target: ColorTarget, value: Double?, diameter: CGFloat) -> some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                TrackedLabel(text: target.label, size: 10, color: target.accent)
-                Text(value.map { String(format: "%.3f", $0) } ?? "—")
-                    .font(.footnote.monospacedDigit())
-                    .foregroundColor(Theme.textPrimary)
+    /// Tap to cycle the speed multiplier; same `speed` state the wheel and
+    /// knobs already send in their commands.
+    private var speedBadge: some View {
+        Button {
+            HapticsEngine.shared.buttonTap()
+            switch speed {
+            case 0.5:  speed = 1.0
+            case 1.0:  speed = 2.0
+            default:   speed = 0.5
             }
-            .frame(width: 62, alignment: .leading)
+        } label: {
+            Text(String(format: "%.1fx", speed))
+                .font(.caption2.bold().monospacedDigit())
+                .foregroundColor(Theme.colorAccent)
+                .frame(width: 48, height: 34)
+                .background(Theme.surface)
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
 
-            Spacer(minLength: 0)
+    /// One edit-sized dial paged across the three targets. Swipe-vs-rotate
+    /// arbitration lives inside DialView; `.id(page)` gives each target a
+    /// fresh dial so no gesture state bleeds across pages.
+    private var dialZone: some View {
+        ZStack {
+            // Faint accent wash behind the primary dial.
+            Circle()
+                .fill(page.accent)
+                .blur(radius: 70)
+                .opacity(0.05)
+                .scaleEffect(1.25)
 
-            // Each dial instance owns its own TickBatcher, so simultaneous
-            // wheels batch per target with nothing mixed.
             DialView(
-                speed: 1.0, // slider speed travels in the command instead
-                accent: target.accent,
-                indicatorAngle: indicatorAngle(for: target),
+                speed: 1.0, // badge speed travels in the command instead
+                accent: page.accent,
+                indicatorAngle: indicatorAngle(for: page),
                 onTicks: { ticks in
                     connection.send(
                         cmd: CommandName.colorDelta,
                         mode: "color",
                         ticks: ticks,
-                        target: target.rawValue,
+                        target: page.rawValue,
                         speed: speed
                     )
+                },
+                onSwipe: { direction in
+                    changePage(by: direction)
                 }
             )
-            .frame(width: diameter, height: diameter)
+            .id(page)
+            .padding(.horizontal, 26) // ~80% of screen width, like Edit
+        }
+    }
 
-            Spacer(minLength: 0)
+    /// Large readout for the visible target, with its reset beside it.
+    private var readoutRow: some View {
+        HStack(spacing: 14) {
+            Text(currentValue.map { String(format: "%.3f", $0) } ?? "—")
+                .font(.system(size: 26, weight: .medium).monospacedDigit())
+                .foregroundColor(Theme.textPrimary)
 
             Button {
-                sendReset(target.rawValue)
+                sendReset(page.rawValue) // resets only the visible target
             } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.footnote)
                     .foregroundColor(Theme.textSecondary)
-                    .frame(width: 44, height: 44) // full-size touch target
+                    .frame(width: 44, height: 44)
                     .background(Theme.surface)
                     .clipShape(Circle())
                     .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private var currentValue: Double? {
+        switch page {
+        case .lift:  return colorState?.lift
+        case .gamma: return colorState?.gamma
+        case .gain:  return colorState?.gain
+        }
+    }
+
+    private func switchPage(to target: ColorTarget) {
+        guard page != target else { return }
+        HapticsEngine.shared.directionChange()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            page = target
+        }
+    }
+
+    private func changePage(by direction: Int) {
+        let all = ColorTarget.allCases
+        guard let index = all.firstIndex(of: page) else { return }
+        let next = min(max(index + direction, 0), all.count - 1)
+        switchPage(to: all[next])
     }
 
     /// Cap-line angle from the actual value, so external resets (per-target,
@@ -252,18 +324,6 @@ struct ColorModeView: View {
                 .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
-    }
-
-    private var speedRow: some View {
-        HStack(spacing: 8) {
-            TrackedLabel(text: "SPEED", size: 9)
-            Slider(value: $speed, in: 0.25...3.0)
-                .tint(Theme.colorAccent)
-            Text(String(format: "%.1fx", speed))
-                .font(.caption2.monospacedDigit())
-                .foregroundColor(Theme.textSecondary)
-                .frame(width: 32, alignment: .trailing)
-        }
     }
 
     /// The five derived/secondary parameters as small vertical dials. Each
