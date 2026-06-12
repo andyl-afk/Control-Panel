@@ -9,10 +9,23 @@ final class CommandServer {
     private let queue = DispatchQueue(label: "resolve-helper.server")
     private var listener: NWListener?
     private var nextClientID = 1
+    private var connections: [Int: NWConnection] = [:]
 
     init(port: UInt16, router: CommandRouter) {
         self.port = NWEndpoint.Port(rawValue: port)!
         self.router = router
+    }
+
+    /// Send one line (JSON without trailing newline) to every connected
+    /// client. Used for sidecar color_state replies.
+    func broadcast(line: String) {
+        queue.async {
+            guard !self.connections.isEmpty else { return }
+            let data = Data((line + "\n").utf8)
+            for connection in self.connections.values {
+                connection.send(content: data, completion: .contentProcessed { _ in })
+            }
+        }
     }
 
     func start() throws {
@@ -42,15 +55,17 @@ final class CommandServer {
     private func accept(_ connection: NWConnection) {
         let id = nextClientID
         nextClientID += 1
+        connections[id] = connection
         print("[server] client #\(id) connected (\(connection.endpoint))")
 
-        connection.stateUpdateHandler = { state in
+        connection.stateUpdateHandler = { [weak self] state in
             switch state {
             case .failed(let error):
                 print("[server] client #\(id) failed: \(error)")
                 connection.cancel()
             case .cancelled:
                 print("[server] client #\(id) disconnected")
+                self?.queue.async { self?.connections.removeValue(forKey: id) }
             default:
                 break
             }

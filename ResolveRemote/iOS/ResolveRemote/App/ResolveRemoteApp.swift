@@ -11,7 +11,7 @@ struct ResolveRemoteApp: App {
 
     var body: some Scene {
         WindowGroup {
-            EditModeView()
+            RootView()
                 .environmentObject(connection)
                 .preferredColorScheme(.dark)
         }
@@ -39,5 +39,18 @@ struct ResolveRemoteApp: App {
         case .connecting, .reconnecting, .connected:
             break
         }
+    }
+}
+
+/// EDIT and COLOUR tabs. The Edit screen is exactly the Phase 1 view.
+struct RootView: View {
+    var body: some View {
+        TabView {
+            EditModeView()
+                .tabItem { Label("EDIT", systemImage: "timeline.selection") }
+            ColorModeView()
+                .tabItem { Label("COLOUR", systemImage: "circle.lefthalf.filled") }
+        }
+        .tint(.orange)
     }
 }

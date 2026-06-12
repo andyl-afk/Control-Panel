@@ -123,8 +123,15 @@ print("\nWaiting for commands (Ctrl-C to quit)…\n")
 // MARK: - Run
 
 let keySender = KeySender()
-let router = CommandRouter(sendKeys: sendKeys, keySender: keySender)
+let colorBridge = ColorBridge()
+let router = CommandRouter(sendKeys: sendKeys, keySender: keySender, colorBridge: colorBridge)
 let server = CommandServer(port: port, router: router)
+
+// Sidecar replies (color_state) go to every connected phone.
+colorBridge.onOutput = { line in
+    server.broadcast(line: line)
+}
+colorBridge.start()
 
 do {
     try server.start()

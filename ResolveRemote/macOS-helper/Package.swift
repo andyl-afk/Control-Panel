@@ -9,7 +9,11 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ResolveHelper",
-            path: "Sources/ResolveHelper"
+            path: "Sources/ResolveHelper",
+            resources: [
+                // The Python sidecar that talks to Resolve's scripting API.
+                .copy("resolve_bridge.py")
+            ]
         )
     ]
 )

@@ -154,6 +154,44 @@ The app just connects to an IP, so any network path works:
    drive the timeline: Space = play/pause, arrows = step, M = marker,
    I/O = in/out, Cmd-Z = undo, jog wheel = repeated arrow steps.
 
+## Colour Mode setup (Phase 2)
+
+Colour Mode adjusts Lift / Gamma / Gain (master value, node 1) and Saturation
+on the current clip through Resolve's scripting API, via a Python sidecar the
+helper spawns automatically.
+
+Requirements:
+
+1. **DaVinci Resolve Studio.** The free version does not expose the external
+   scripting API — Colour Mode will show "unavailable".
+2. In Resolve: **Preferences → System → General → "External scripting using"**
+   must be set to **Local**. Restart Resolve after changing it.
+3. **python3** must be available on the Mac (`xcode-select --install`, or
+   install from python.org). The helper runs `/usr/bin/env python3`.
+
+No extra setup beyond that — start the helper as usual and the sidecar logs
+appear with a `[sidecar]` prefix.
+
+### Known limitation: shadow state
+
+Resolve's API can *set* CDL grades but cannot *read* them back, so the helper
+keeps its own copy of the four values (lift/gamma/gain/sat) per clip. If a
+clip's node 1 was already graded with the mouse, the **first wheel movement
+overwrites that grade** with the helper's values (defaults, for a clip it
+hasn't touched). This is a known v1 limitation — use Resolve's undo if it
+bites you.
+
+### Colour "unavailable" reasons
+
+| Reason shown on the phone | Meaning |
+| --- | --- |
+| Could not load the DaVinci Resolve scripting module… | The scripting API files weren't found — is Resolve installed in the standard location? |
+| Resolve is not running, or external scripting is unavailable… | Start Resolve Studio; check the External scripting preference is Local; the free version always shows this. |
+| No project / timeline is open | Open a project and a timeline in Resolve. |
+| No video clip at the playhead | Move the playhead over a clip. |
+| Lost connection to Resolve… | Resolve quit or crashed — reopen it and tap Retry. |
+| Colour sidecar stopped / Could not start python3… | Check python3 is installed; look for `[sidecar]` errors in the helper console. |
+
 ## Troubleshooting
 
 | Symptom | Fix |

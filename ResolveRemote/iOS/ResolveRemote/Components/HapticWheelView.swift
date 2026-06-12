@@ -15,6 +15,8 @@ struct HapticWheelView: View {
     /// Sensitivity multiplier from the speed slider. 1.0 = one tick per
     /// `baseDetentDegrees` of rotation; higher = more ticks per turn.
     var speed: Double = 1.0
+    /// Optional hub label override (Colour Mode shows the active target).
+    var hubText: String?
     /// Called in JOG/SCRUB whenever one or more detents accumulate.
     var onTick: (Int) -> Void
     /// Called in SHUTTLE when the speed level changes.
@@ -115,7 +117,7 @@ struct HapticWheelView: View {
         if mode == .shuttle && shuttleLevel != 0 {
             return shuttleLevel > 0 ? "+\(shuttleLevel)" : "\(shuttleLevel)"
         }
-        return mode.rawValue
+        return hubText ?? mode.rawValue
     }
 
     // MARK: - Gesture handling

@@ -5,11 +5,13 @@ import Foundation
 final class CommandRouter {
     private let sendKeys: Bool
     private let keySender: KeySender
+    private let colorBridge: ColorBridge
     private let decoder = JSONDecoder()
 
-    init(sendKeys: Bool, keySender: KeySender) {
+    init(sendKeys: Bool, keySender: KeySender, colorBridge: ColorBridge) {
         self.sendKeys = sendKeys
         self.keySender = keySender
+        self.colorBridge = colorBridge
     }
 
     /// Handle one newline-delimited JSON line. Malformed input is logged and
@@ -27,6 +29,13 @@ final class CommandRouter {
         let ticksText = command.ticks.map { " ticks=\($0)" } ?? ""
         let levelText = command.level.map { " level=\($0)" } ?? ""
         print("[cmd] seq=\(command.seq) mode=\(command.mode) cmd=\(command.cmd)\(ticksText)\(levelText)")
+
+        // Colour commands go to the Python sidecar untouched; the keyboard
+        // path below stays exclusively for edit mode.
+        if command.mode == "color" {
+            colorBridge.send(line: line)
+            return
+        }
 
         route(command)
     }

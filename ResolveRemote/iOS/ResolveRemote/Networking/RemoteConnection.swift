@@ -35,6 +35,8 @@ final class RemoteConnection: ObservableObject {
 
     @Published private(set) var state: State = .disconnected
     @Published private(set) var lastError: String?
+    /// Latest colour sidecar state from the helper (color_state messages).
+    @Published private(set) var colorState: ColorState?
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -44,6 +46,8 @@ final class RemoteConnection: ObservableObject {
     private var seq = 0
     private let queue = DispatchQueue(label: "resolve-remote.connection")
     private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+    private var receiveBuffer = Data()
 
     // Reconnect policy
     private var host: String?
@@ -85,17 +89,28 @@ final class RemoteConnection: ObservableObject {
     // MARK: - Sending
 
     /// Encode and send one command. No-op when not connected.
-    func send(cmd: String, ticks: Int? = nil, level: Int? = nil) {
+    func send(
+        cmd: String,
+        mode: String = "edit",
+        ticks: Int? = nil,
+        level: Int? = nil,
+        target: String? = nil,
+        steps: Int? = nil,
+        speed: Double? = nil
+    ) {
         guard isConnected, let connection else { return }
 
         seq += 1
         let command = Command(
             v: 1,
             seq: seq,
-            mode: "edit",
+            mode: mode,
             cmd: cmd,
             ticks: ticks,
             level: level,
+            target: target,
+            steps: steps,
+            speed: speed,
             ts: Date().timeIntervalSince1970
         )
 
@@ -146,8 +161,7 @@ final class RemoteConnection: ObservableObject {
             }
         }
 
-        // The helper never sends data, but keeping a receive pending lets us
-        // notice immediately when it goes away.
+        receiveBuffer = Data()
         receive(on: connection)
         connection.start(queue: queue)
     }
@@ -160,13 +174,29 @@ final class RemoteConnection: ObservableObject {
     }
 
     private func receive(on connection: NWConnection) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] _, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             guard let self, self.connection === connection else { return }
+            if let data, !data.isEmpty {
+                self.handleIncoming(data)
+            }
             if isComplete || error != nil {
                 self.handleDrop(reason: "Helper closed the connection")
                 return
             }
             self.receive(on: connection)
+        }
+    }
+
+    /// Parse newline-delimited JSON replies from the helper (currently only
+    /// color_state). Unknown or malformed lines are ignored.
+    private func handleIncoming(_ data: Data) {
+        receiveBuffer.append(data)
+        while let newline = receiveBuffer.firstIndex(of: UInt8(ascii: "\n")) {
+            let lineData = Data(receiveBuffer[receiveBuffer.startIndex..<newline])
+            receiveBuffer.removeSubrange(receiveBuffer.startIndex...newline)
+            guard let state = try? decoder.decode(ColorState.self, from: lineData),
+                  state.cmd == "color_state" else { continue }
+            DispatchQueue.main.async { self.colorState = state }
         }
     }
 
