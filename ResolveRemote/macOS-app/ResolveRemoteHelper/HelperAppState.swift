@@ -19,36 +19,15 @@ final class HelperAppState: ObservableObject {
     @Published private(set) var lastServerError: String?
 
     /// Dry-run is OFF by default in the app: send-keys is the normal mode.
-    /// Persisted across launches; toggling takes effect immediately.
-    @Published var dryRun: Bool {
-        didSet {
-            UserDefaults.standard.set(dryRun, forKey: Self.dryRunKey)
-            core.sendKeys = !dryRun
-        }
-    }
-
-    @Published var launchAtLogin: Bool {
-        didSet {
-            guard oldValue != launchAtLogin else { return }
-            do {
-                if launchAtLogin {
-                    try SMAppService.mainApp.register()
-                } else {
-                    try SMAppService.mainApp.unregister()
-                }
-            } catch {
-                NSLog("Launch at Login change failed: \(error)")
-                // Re-read reality rather than lying in the menu.
-                launchAtLogin = SMAppService.mainApp.status == .enabled
-            }
-        }
-    }
+    /// Persisted across launches; change it via `setDryRun(_:)`.
+    @Published private(set) var dryRun: Bool
+    @Published private(set) var launchAtLogin: Bool
 
     init() {
-        let dryRun = UserDefaults.standard.bool(forKey: Self.dryRunKey)
-        self.dryRun = dryRun
-        self.core = HelperCore(port: port, sendKeys: !dryRun)
+        let savedDryRun = UserDefaults.standard.bool(forKey: Self.dryRunKey)
+        self.dryRun = savedDryRun
         self.launchAtLogin = SMAppService.mainApp.status == .enabled
+        self.core = HelperCore(port: port, sendKeys: !savedDryRun)
 
         core.onClientCountChange = { [weak self] count in
             self?.clientCount = count
@@ -56,6 +35,31 @@ final class HelperAppState: ObservableObject {
         core.onServerError = { [weak self] message in
             self?.running = false
             self?.lastServerError = message
+        }
+    }
+
+    // MARK: - Toggles (driven from the menu)
+
+    /// Live dry-run toggle; takes effect immediately and persists.
+    func setDryRun(_ on: Bool) {
+        dryRun = on
+        UserDefaults.standard.set(on, forKey: Self.dryRunKey)
+        core.sendKeys = !on
+    }
+
+    func setLaunchAtLogin(_ on: Bool) {
+        guard on != launchAtLogin else { return }
+        do {
+            if on {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchAtLogin = on
+        } catch {
+            NSLog("Launch at Login change failed: \(error)")
+            // Re-read reality rather than lying in the menu.
+            launchAtLogin = SMAppService.mainApp.status == .enabled
         }
     }
 

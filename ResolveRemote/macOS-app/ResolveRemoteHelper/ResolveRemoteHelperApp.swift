@@ -69,8 +69,14 @@ struct HelperMenu: View {
 
             Divider()
 
-            Toggle("Dry-run mode (log keys, don't send)", isOn: $state.dryRun)
-            Toggle("Launch at Login", isOn: $state.launchAtLogin)
+            Toggle("Dry-run mode (log keys, don't send)", isOn: Binding(
+                get: { state.dryRun },
+                set: { state.setDryRun($0) }
+            ))
+            Toggle("Launch at Login", isOn: Binding(
+                get: { state.launchAtLogin },
+                set: { state.setLaunchAtLogin($0) }
+            ))
 
             Divider()
 
