@@ -16,16 +16,27 @@ struct ResolveRemoteHelperApp: App {
                 .environmentObject(delegate.state)
         } label: {
             // Template glyph; filled variant while at least one phone is
-            // connected.
-            Image(systemName: delegate.state.clientCount > 0 ? "dial.medium.fill" : "dial.medium")
+            // connected. Wrapped in an observing view so it updates live.
+            MenuBarIcon(state: delegate.state)
         }
         .menuBarExtraStyle(.menu)
     }
 }
 
+/// Observes the state so the menu bar glyph switches when a phone connects
+/// or disconnects.
+private struct MenuBarIcon: View {
+    @ObservedObject var state: HelperAppState
+
+    var body: some View {
+        Image(systemName: state.clientCount > 0 ? "dial.medium.fill" : "dial.medium")
+    }
+}
+
 /// Owns HelperAppState so the server starts once at launch and is stopped
 /// cleanly on every termination path (Quit menu item, Cmd-Q, logout).
-final class HelperAppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+/// Not ObservableObject itself — the observable state lives in `state`.
+final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     let state = HelperAppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
