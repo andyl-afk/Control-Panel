@@ -2,6 +2,8 @@ import AppKit
 import ResolveHelperKit
 import ServiceManagement
 import SwiftUI
+internal import Combine
+internal import Combine
 
 /// Bridges HelperCore (shared with the CLI) to the menu bar UI: server
 /// lifecycle, client count, dry-run persistence, launch-at-login, and the

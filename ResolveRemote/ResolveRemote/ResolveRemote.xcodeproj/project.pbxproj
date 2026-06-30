@@ -14,30 +14,56 @@
 		464261E22FDB957F0055FFC7 /* ModeSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261CF2FDB957F0055FFC7 /* ModeSelector.swift */; };
 		464261E32FDB957F0055FFC7 /* TransportBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D12FDB957F0055FFC7 /* TransportBar.swift */; };
 		464261E42FDB957F0055FFC7 /* Command.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D52FDB957F0055FFC7 /* Command.swift */; };
-		464261E52FDB957F0055FFC7 /* HapticWheelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261CE2FDB957F0055FFC7 /* HapticWheelView.swift */; };
 		464261E62FDB957F0055FFC7 /* EditModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261DA2FDB957F0055FFC7 /* EditModeView.swift */; };
-		464261E72FDB957F0055FFC7 /* ConnectionPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464261D92FDB957F0055FFC7 /* ConnectionPanelView.swift */; };
+		46869E642FE116F100B52F3B /* TickBatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46869E632FE116F100B52F3B /* TickBatcher.swift */; };
+		46869E652FE116F100B52F3B /* DialView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46869E622FE116F100B52F3B /* DialView.swift */; };
+		46869E672FE116F900B52F3B /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46869E662FE116F900B52F3B /* BonjourBrowser.swift */; };
+		46869E6B2FE1170500B52F3B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46869E692FE1170500B52F3B /* SettingsView.swift */; };
+		46869E6C2FE1170500B52F3B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46869E6A2FE1170500B52F3B /* Theme.swift */; };
+		46869E6D2FE1170500B52F3B /* ColorModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46869E682FE1170500B52F3B /* ColorModeView.swift */; };
+		46869E852FE117E600B52F3B /* ResolveHelperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 46869E842FE117E600B52F3B /* ResolveHelperKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		464261BE2FDB95580055FFC7 /* ResolveRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ResolveRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		464261CC2FDB957F0055FFC7 /* ResolveRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResolveRemoteApp.swift; sourceTree = "<group>"; };
-		464261CE2FDB957F0055FFC7 /* HapticWheelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticWheelView.swift; sourceTree = "<group>"; };
 		464261CF2FDB957F0055FFC7 /* ModeSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelector.swift; sourceTree = "<group>"; };
 		464261D02FDB957F0055FFC7 /* ShortcutGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutGrid.swift; sourceTree = "<group>"; };
 		464261D12FDB957F0055FFC7 /* TransportBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportBar.swift; sourceTree = "<group>"; };
 		464261D32FDB957F0055FFC7 /* HapticsEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsEngine.swift; sourceTree = "<group>"; };
 		464261D52FDB957F0055FFC7 /* Command.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Command.swift; sourceTree = "<group>"; };
 		464261D72FDB957F0055FFC7 /* RemoteConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteConnection.swift; sourceTree = "<group>"; };
-		464261D92FDB957F0055FFC7 /* ConnectionPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionPanelView.swift; sourceTree = "<group>"; };
 		464261DA2FDB957F0055FFC7 /* EditModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditModeView.swift; sourceTree = "<group>"; };
+		46869E622FE116F100B52F3B /* DialView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialView.swift; sourceTree = "<group>"; };
+		46869E632FE116F100B52F3B /* TickBatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickBatcher.swift; sourceTree = "<group>"; };
+		46869E662FE116F900B52F3B /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
+		46869E682FE1170500B52F3B /* ColorModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorModeView.swift; sourceTree = "<group>"; };
+		46869E692FE1170500B52F3B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		46869E6A2FE1170500B52F3B /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		46869E722FE1171F00B52F3B /* Resolve Remote Helper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Resolve Remote Helper.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		46869E732FE1171F00B52F3B /* Resolve Remote Helper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Resolve Remote Helper";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		464261BB2FDB95580055FFC7 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		46869E6F2FE1171F00B52F3B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				46869E852FE117E600B52F3B /* ResolveHelperKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -48,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				464261DD2FDB957F0055FFC7 /* iOS */,
+				46869E732FE1171F00B52F3B /* Resolve Remote Helper */,
 				464261BF2FDB95580055FFC7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -56,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				464261BE2FDB95580055FFC7 /* ResolveRemote.app */,
+				46869E722FE1171F00B52F3B /* Resolve Remote Helper.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -71,10 +99,11 @@
 		464261D22FDB957F0055FFC7 /* Components */ = {
 			isa = PBXGroup;
 			children = (
-				464261CE2FDB957F0055FFC7 /* HapticWheelView.swift */,
 				464261CF2FDB957F0055FFC7 /* ModeSelector.swift */,
 				464261D02FDB957F0055FFC7 /* ShortcutGrid.swift */,
 				464261D12FDB957F0055FFC7 /* TransportBar.swift */,
+				46869E622FE116F100B52F3B /* DialView.swift */,
+				46869E632FE116F100B52F3B /* TickBatcher.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -99,6 +128,7 @@
 			isa = PBXGroup;
 			children = (
 				464261D72FDB957F0055FFC7 /* RemoteConnection.swift */,
+				46869E662FE116F900B52F3B /* BonjourBrowser.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -106,8 +136,10 @@
 		464261DB2FDB957F0055FFC7 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				464261D92FDB957F0055FFC7 /* ConnectionPanelView.swift */,
 				464261DA2FDB957F0055FFC7 /* EditModeView.swift */,
+				46869E682FE1170500B52F3B /* ColorModeView.swift */,
+				46869E692FE1170500B52F3B /* SettingsView.swift */,
+				46869E6A2FE1170500B52F3B /* Theme.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -156,6 +188,29 @@
 			productReference = 464261BE2FDB95580055FFC7 /* ResolveRemote.app */;
 			productType = "com.apple.product-type.application";
 		};
+		46869E712FE1171F00B52F3B /* Resolve Remote Helper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 46869E7A2FE1172000B52F3B /* Build configuration list for PBXNativeTarget "Resolve Remote Helper" */;
+			buildPhases = (
+				46869E6E2FE1171F00B52F3B /* Sources */,
+				46869E6F2FE1171F00B52F3B /* Frameworks */,
+				46869E702FE1171F00B52F3B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				46869E732FE1171F00B52F3B /* Resolve Remote Helper */,
+			);
+			name = "Resolve Remote Helper";
+			packageProductDependencies = (
+				46869E842FE117E600B52F3B /* ResolveHelperKit */,
+			);
+			productName = "Resolve Remote Helper";
+			productReference = 46869E722FE1171F00B52F3B /* Resolve Remote Helper.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -169,6 +224,9 @@
 					464261BD2FDB95580055FFC7 = {
 						CreatedOnToolsVersion = 26.5;
 					};
+					46869E712FE1171F00B52F3B = {
+						CreatedOnToolsVersion = 26.5;
+					};
 				};
 			};
 			buildConfigurationList = 464261B92FDB95580055FFC7 /* Build configuration list for PBXProject "ResolveRemote" */;
@@ -180,18 +238,29 @@
 			);
 			mainGroup = 464261B52FDB95580055FFC7;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				46869E832FE117E600B52F3B /* XCLocalSwiftPackageReference "../macOS-helper" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 464261BF2FDB95580055FFC7 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				464261BD2FDB95580055FFC7 /* ResolveRemote */,
+				46869E712FE1171F00B52F3B /* Resolve Remote Helper */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		464261BC2FDB95580055FFC7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		46869E702FE1171F00B52F3B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -211,10 +280,21 @@
 				464261E12FDB957F0055FFC7 /* HapticsEngine.swift in Sources */,
 				464261E22FDB957F0055FFC7 /* ModeSelector.swift in Sources */,
 				464261E32FDB957F0055FFC7 /* TransportBar.swift in Sources */,
+				46869E672FE116F900B52F3B /* BonjourBrowser.swift in Sources */,
 				464261E42FDB957F0055FFC7 /* Command.swift in Sources */,
-				464261E52FDB957F0055FFC7 /* HapticWheelView.swift in Sources */,
 				464261E62FDB957F0055FFC7 /* EditModeView.swift in Sources */,
-				464261E72FDB957F0055FFC7 /* ConnectionPanelView.swift in Sources */,
+				46869E642FE116F100B52F3B /* TickBatcher.swift in Sources */,
+				46869E6B2FE1170500B52F3B /* SettingsView.swift in Sources */,
+				46869E6C2FE1170500B52F3B /* Theme.swift in Sources */,
+				46869E6D2FE1170500B52F3B /* ColorModeView.swift in Sources */,
+				46869E652FE116F100B52F3B /* DialView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		46869E6E2FE1171F00B52F3B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -352,6 +432,7 @@
 				DEVELOPMENT_TEAM = X9UJWN3373;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = _resolveremote._tcp;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -384,6 +465,7 @@
 				DEVELOPMENT_TEAM = X9UJWN3373;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = _resolveremote._tcp;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -403,6 +485,88 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		46869E7B2FE1172000B52F3B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X9UJWN3373;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "Lloyd.Resolve-Remote-Helper";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		46869E7C2FE1172000B52F3B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X9UJWN3373;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "Lloyd.Resolve-Remote-Helper";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -427,7 +591,30 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		46869E7A2FE1172000B52F3B /* Build configuration list for PBXNativeTarget "Resolve Remote Helper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				46869E7B2FE1172000B52F3B /* Debug */,
+				46869E7C2FE1172000B52F3B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		46869E832FE117E600B52F3B /* XCLocalSwiftPackageReference "../macOS-helper" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../macOS-helper";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		46869E842FE117E600B52F3B /* ResolveHelperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ResolveHelperKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 464261B62FDB95580055FFC7 /* Project object */;
 }
