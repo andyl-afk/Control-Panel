@@ -65,6 +65,51 @@ The sources are in `macOS-app/ResolveRemoteHelper/`. In the existing
 5. Build & run. The dial icon appears in the menu bar; the first launch
    without Accessibility shows the one-time explainer alert.
 
+> **Note on file locations:** Xcode moves target sources into a
+> `Resolve Remote Helper/` group folder when you add them, so the helper
+> Swift files live at `ResolveRemote/ResolveRemote/Resolve Remote Helper/`,
+> not the original `macOS-app/` path. That's expected — edits happen there.
+
+### Gotchas we actually hit (read this if the build/run fails)
+
+- **"Listener failed: Operation not permitted" (server shows Stopped):**
+  the App Sandbox is still active. Removing the *capability card* often
+  leaves an `.entitlements` file (with `com.apple.security.app-sandbox`)
+  still enforcing it. Delete that entitlements file (or set app-sandbox
+  to NO) **and** clear **Build Settings → Code Signing Entitlements** if
+  it still points there, then Clean Build Folder (⇧⌘K) and rerun. On
+  first run, click **Allow** on the macOS incoming-connections prompt; on
+  macOS 15+, also enable the app under System Settings → Privacy &
+  Security → Local Network.
+- **`@Published` + `didSet`** in a class with a custom `init` triggers
+  "objectWillChange used before being initialized" — don't combine them;
+  use plain `@Published private(set)` + setter methods (see
+  `HelperAppState`).
+- **A class conforming to `ObservableObject` needs ≥1 `@Published`
+  property**, or it won't synthesize `objectWillChange` and fails to
+  conform. `HelperAppDelegate` deliberately does NOT conform (it isn't
+  observable — the state is).
+- **`Unable to resolve module 'AppKit'/'ApplicationServices'`** while
+  building means `ResolveHelperKit` is compiling for iOS — make sure the
+  iOS app target does NOT link it and you're building the helper scheme
+  for **My Mac**.
+
+### Keeping the Xcode project in git (avoids "my setup reverted" pain)
+
+`project.pbxproj` is tracked. The cloud agent adds `.swift` files on disk
+but can't register them in the project, so **after any structural change
+in Xcode (new target, added files, package link) commit and push
+`project.pbxproj` yourself** from Terminal (Xcode's Source Control → Pull
+can silently discard uncommitted project changes):
+
+```sh
+git add -A && git commit -m "Update Xcode project" && git push
+```
+
+Once committed, `git pull` brings source changes without reverting your
+project config. Only brand-new source files added in a later phase need a
+one-time drag into the target (then commit the project again).
+
 ## iOS app Info.plist keys
 
 The iOS target needs both of these (target → Info tab):
