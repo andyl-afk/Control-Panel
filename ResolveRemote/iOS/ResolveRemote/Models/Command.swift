@@ -64,6 +64,22 @@ struct StillResult: Equatable {
     let ok: Bool
 }
 
+/// Phase 11 — the Resolve capability probe result. Every field is optional so
+/// decoding tolerates missing keys and future additions. `features` maps a
+/// feature name to one of "supported" / "unsupported" / "unknown" / "error".
+struct CapabilityState: Decodable, Equatable {
+    let resolve_connected: Bool?
+    let product_name: String?
+    let version_string: String?
+    let current_page: String?
+    let current_project: Bool?
+    let current_timeline: Bool?
+    let current_video_item: Bool?
+    let features: [String: String]?
+    let warnings: [String]?
+    let errors: [String]?
+}
+
 /// Command names understood by the Phase 1 helper. Using constants instead of
 /// loose strings keeps the views honest.
 enum CommandName {
@@ -95,4 +111,7 @@ enum CommandName {
     static let listPresets = "list_presets"
     static let applyPreset = "apply_preset"
     static let grabStill = "grab_still"
+
+    // System mode (mode: "system")
+    static let capabilityProbe = "capability_probe"
 }

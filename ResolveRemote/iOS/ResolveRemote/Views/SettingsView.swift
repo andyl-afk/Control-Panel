@@ -22,6 +22,7 @@ struct SettingsView: View {
     @AppStorage("hapticIntensity") private var hapticIntensity = "medium"
     @AppStorage("wheelTextureEnabled") private var wheelTextureEnabled = true
     @FocusState private var focusedField: Field?
+    @State private var showCapabilities = false
 
     var body: some View {
         ZStack {
@@ -150,6 +151,23 @@ struct SettingsView: View {
                     .disabled(!hapticsEnabled)
                 }
 
+                section("DIAGNOSTICS") {
+                    Button {
+                        showCapabilities = true
+                    } label: {
+                        HStack {
+                            Text("Resolve capabilities")
+                                .font(.footnote)
+                                .foregroundColor(Theme.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 section("ABOUT") {
                     HStack {
                         Text("Resolve Remote")
@@ -177,6 +195,10 @@ struct SettingsView: View {
         // Browse only while this tab is visible.
         .onAppear { browser.acquire("settings") }
         .onDisappear { browser.release("settings") }
+        .sheet(isPresented: $showCapabilities) {
+            CapabilityProbeView()
+                .environmentObject(connection)
+        }
     }
 
     // MARK: - Pieces

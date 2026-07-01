@@ -141,6 +141,37 @@ RESET_TARGETS = {
 }
 
 
+# Capability-probe feature status values (Phase 11).
+STATUS_SUPPORTED = "supported"
+STATUS_UNSUPPORTED = "unsupported"
+STATUS_UNKNOWN = "unknown"
+STATUS_ERROR = "error"
+
+
+def has_method(obj, name):
+    """True if `obj` exposes a callable `name`. Resolve's bridge returns None
+    (not AttributeError) for methods a given version doesn't have, so a plain
+    getattr + callable check is the reliable presence test."""
+    return obj is not None and callable(getattr(obj, name, None))
+
+
+def feature_from_method(obj, name):
+    """Map method presence to a feature status. `unknown` when the owning
+    object itself is missing (we couldn't even look), else supported/unsupported."""
+    if obj is None:
+        return STATUS_UNKNOWN
+    return STATUS_SUPPORTED if callable(getattr(obj, name, None)) else STATUS_UNSUPPORTED
+
+
+def safe_call(fn, default=None):
+    """Call `fn` and swallow any error, returning `default`. Used so one flaky
+    Resolve call never aborts the probe."""
+    try:
+        return fn()
+    except Exception:
+        return default
+
+
 def clamped(value, bounds):
     low, high = bounds
     return max(low, min(high, value))
@@ -352,6 +383,110 @@ class ColorEngine:
         except Exception as exc:
             log("GetNumNodes failed: %s" % exc)
         return 1
+
+    # -- capability probe (Phase 11) ----------------------------------------
+
+    def handle_capability_probe(self, cmd):
+        """Introspect the installed Resolve's scripting API and emit one
+        capability_state line. Runs on the reader thread (like bypass), not
+        through the colour batch, so it works with no project/clip and never
+        blocks grading. Every check is defensive: a failure records an
+        error/warning but never aborts the probe."""
+        with self.lock:
+            warnings = []
+            errors = []
+            features = {}
+
+            connected = self.session.connect()
+            resolve = self.session.resolve if connected else None
+
+            product_name = None
+            version_string = None
+            current_page = None
+            if resolve is not None:
+                product_name = safe_call(lambda: resolve.GetProductName())
+                version_string = (
+                    safe_call(lambda: resolve.GetVersionString())
+                    or safe_call(lambda: resolve.GetVersion())
+                )
+                if isinstance(version_string, (list, tuple)):
+                    version_string = ".".join(str(part) for part in version_string)
+                current_page = safe_call(lambda: resolve.GetCurrentPage())
+            elif self.session.reason:
+                warnings.append(self.session.reason)
+
+            timeline, item, reason = (None, None, None)
+            if resolve is not None:
+                timeline, item, reason = self.session.current_context()
+                if item is None and reason:
+                    warnings.append(reason)
+
+            # Edit / timeline
+            features["open_page"] = feature_from_method(resolve, "OpenPage")
+            features["current_timecode"] = feature_from_method(timeline, "GetCurrentTimecode")
+            features["set_timecode"] = feature_from_method(timeline, "SetCurrentTimecode")
+            features["markers"] = feature_from_method(timeline, "GetMarkers")
+            features["thumbnail"] = feature_from_method(timeline, "GetCurrentClipThumbnailImage")
+            features["track_control"] = feature_from_method(timeline, "SetTrackEnable")
+
+            # Colour / nodes / stills / LUTs (need the current video item + graph)
+            features["cdl"] = feature_from_method(item, "SetCDL")
+            features["grab_still"] = feature_from_method(timeline, "GrabStill")
+            graph = None
+            if has_method(item, "GetNodeGraph"):
+                graph = safe_call(lambda: item.GetNodeGraph())
+                features["node_graph"] = STATUS_SUPPORTED if graph is not None else STATUS_UNKNOWN
+            else:
+                features["node_graph"] = feature_from_method(item, "GetNodeGraph")
+            features["apply_drx"] = feature_from_method(graph, "ApplyGradeFromDRX")
+            features["set_lut"] = feature_from_method(graph, "SetLUT")
+            features["reset_grades"] = feature_from_method(graph, "ResetAllGrades")
+
+            # Studio AI — absence from scripting doesn't prove the feature is
+            # missing, only that it isn't scriptable here, so default unknown.
+            # Never invoke these during a probe.
+            features["voice_isolation"] = self._probe_ai_presence(
+                [(timeline, "SetVoiceIsolation"), (resolve, "SetVoiceIsolation")])
+            features["magic_mask"] = self._probe_ai_presence(
+                [(item, "CreateMagicMask"), (graph, "CreateMagicMask")])
+            features["smart_reframe"] = self._probe_ai_presence(
+                [(item, "SmartReframe"), (graph, "SmartReframe")])
+
+            # Photo page — do NOT switch the user's page to test it.
+            features["photo_page"] = STATUS_UNKNOWN
+            warnings.append(
+                "Photo page not probed to avoid switching your page; "
+                "use a keyboard fallback if needed."
+            )
+
+            payload = {
+                "v": 1,
+                "type": "capability_state",
+                "resolve_connected": connected,
+                "product_name": product_name,
+                "version_string": version_string,
+                "current_page": current_page,
+                "current_project": timeline is not None or bool(
+                    resolve is not None and safe_call(
+                        lambda: resolve.GetProjectManager().GetCurrentProject()) is not None),
+                "current_timeline": timeline is not None,
+                "current_video_item": item is not None,
+                "features": features,
+                "warnings": warnings,
+                "errors": errors,
+            }
+            emit(payload)
+            log("capability probe: connected=%s product=%s version=%s page=%s"
+                % (connected, product_name, version_string, current_page))
+
+    def _probe_ai_presence(self, candidates):
+        """Return supported if any (obj, method) pair exists, else unknown —
+        AI functions absent from scripting are reported unknown, not
+        unsupported, and are never called."""
+        for obj, name in candidates:
+            if has_method(obj, name):
+                return STATUS_SUPPORTED
+        return STATUS_UNKNOWN
 
     # -- bypass (hold-to-compare) -------------------------------------------
 
@@ -669,6 +804,10 @@ def main():
                 # Momentary control: handle right here, skipping the rate
                 # limiter, so hold-to-compare feels instant.
                 engine.handle_bypass(bool(cmd.get("enabled", True)))
+            elif cmd.get("cmd") == "capability_probe":
+                # System introspection: answer immediately, off the colour
+                # batch, so it works even with no project/clip open.
+                engine.handle_capability_probe(cmd)
             else:
                 commands.put(cmd)
         commands.put(sentinel)  # stdin closed: the helper went away

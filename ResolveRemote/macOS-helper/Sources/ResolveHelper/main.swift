@@ -92,6 +92,28 @@ core.onServerError = { message in
     print("[server] fatal: \(message)")
     exit(1)
 }
+// Print a readable summary whenever the sidecar reports Resolve capabilities
+// (triggered by a client's capability_probe).
+core.onCapabilityState = { line in
+    guard let data = line.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        print("[capability] \(line)")
+        return
+    }
+    let connected = (obj["resolve_connected"] as? Bool) ?? false
+    let product = (obj["product_name"] as? String) ?? "unknown"
+    let version = (obj["version_string"] as? String) ?? "?"
+    let page = (obj["current_page"] as? String) ?? "-"
+    print("[capability] resolve_connected=\(connected) product=\(product) version=\(version) page=\(page)")
+    if let features = obj["features"] as? [String: String] {
+        for key in features.keys.sorted() {
+            print("[capability]   \(key): \(features[key] ?? "?")")
+        }
+    }
+    if let warnings = obj["warnings"] as? [String], !warnings.isEmpty {
+        for warning in warnings { print("[capability]   warning: \(warning)") }
+    }
+}
 
 do {
     try core.start()

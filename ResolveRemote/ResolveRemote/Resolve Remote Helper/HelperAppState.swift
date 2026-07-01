@@ -24,6 +24,8 @@ final class HelperAppState: ObservableObject {
     /// Persisted across launches; change it via `setDryRun(_:)`.
     @Published private(set) var dryRun: Bool
     @Published private(set) var launchAtLogin: Bool
+    /// One-line summary of the last capability probe (Phase 11).
+    @Published private(set) var lastCapabilitySummary: String?
 
     init() {
         let savedDryRun = UserDefaults.standard.bool(forKey: Self.dryRunKey)
@@ -38,6 +40,28 @@ final class HelperAppState: ObservableObject {
             self?.running = false
             self?.lastServerError = message
         }
+        core.onCapabilityState = { [weak self] line in
+            self?.lastCapabilitySummary = Self.summarize(line)
+        }
+    }
+
+    /// Ask the helper to probe Resolve; the result updates `lastCapabilitySummary`.
+    func probeCapabilities() {
+        core.probeCapabilities()
+    }
+
+    /// Condense a capability_state JSON line into a menu-friendly one-liner.
+    private static func summarize(_ line: String) -> String {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return "Capability state received" }
+        if (obj["resolve_connected"] as? Bool) != true {
+            return "Resolve not connected"
+        }
+        let product = (obj["product_name"] as? String) ?? "Resolve"
+        let version = (obj["version_string"] as? String) ?? "?"
+        let page = (obj["current_page"] as? String) ?? "-"
+        return "\(product) \(version) — \(page)"
     }
 
     // MARK: - Toggles (driven from the menu)

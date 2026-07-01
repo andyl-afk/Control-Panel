@@ -58,6 +58,10 @@ The phone remembers your Mac and reconnects automatically next time.
 - **Manual connection fallback:** if discovery doesn't work on your
   network, the helper's menu bar item shows the Mac's IP — enter it under
   Settings → CONNECTION on the phone.
+- **Capabilities:** Settings → Diagnostics → Resolve capabilities runs a
+  probe that reports whether your installed Resolve Studio exposes each
+  feature (colour, stills, LUTs, markers, etc.) — handy when something
+  isn't behaving.
 
 ## Troubleshooting
 

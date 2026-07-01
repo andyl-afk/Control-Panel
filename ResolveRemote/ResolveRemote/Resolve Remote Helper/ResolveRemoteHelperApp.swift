@@ -80,6 +80,14 @@ struct HelperMenu: View {
 
             Divider()
 
+            Button("Probe Resolve Capabilities") {
+                state.probeCapabilities()
+            }
+            Text(state.lastCapabilitySummary ?? "Last capability state: —")
+                .font(.caption)
+
+            Divider()
+
             Toggle("Dry-run mode (log keys, don't send)", isOn: Binding(
                 get: { state.dryRun },
                 set: { state.setDryRun($0) }

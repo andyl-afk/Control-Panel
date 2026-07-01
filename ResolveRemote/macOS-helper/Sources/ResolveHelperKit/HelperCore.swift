@@ -27,6 +27,12 @@ public final class HelperCore {
     /// The CLI exits; the app shows "Stopped".
     public var onServerError: ((String) -> Void)?
 
+    /// Fired on the main queue with the raw JSON line whenever the sidecar
+    /// reports a capability_state (the CLI prints it; the menu bar app caches
+    /// a summary). Also stored so callers can read the most recent result.
+    public var onCapabilityState: ((String) -> Void)?
+    public private(set) var lastCapabilityState: String?
+
     private let keySender = KeySender()
     private let colorBridge = ColorBridge()
     private let router: CommandRouter
@@ -38,8 +44,16 @@ public final class HelperCore {
         self.server = CommandServer(port: port, router: router)
 
         // Sidecar replies (color_state etc.) go to every connected phone.
+        // capability_state is additionally surfaced locally for the CLI/menu.
         colorBridge.onOutput = { [weak self] line in
-            self?.server.broadcast(line: line)
+            guard let self else { return }
+            self.server.broadcast(line: line)
+            if Self.isCapabilityState(line) {
+                DispatchQueue.main.async {
+                    self.lastCapabilityState = line
+                    self.onCapabilityState?(line)
+                }
+            }
         }
         // If a phone vanishes mid hold-to-compare, re-enable the node so a
         // grade is never left silently bypassed (the sidecar no-ops when
@@ -64,6 +78,20 @@ public final class HelperCore {
     public func start() throws {
         colorBridge.start()
         try server.start()
+    }
+
+    /// Ask the sidecar to introspect Resolve and emit a capability_state
+    /// (broadcast to clients and surfaced via `onCapabilityState`).
+    public func probeCapabilities() {
+        colorBridge.send(line: #"{"v":1,"seq":0,"mode":"system","cmd":"capability_probe"}"#)
+    }
+
+    /// Cheap, spacing-tolerant check for a capability_state line.
+    private static func isCapabilityState(_ line: String) -> Bool {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+        return (obj["type"] as? String) == "capability_state"
     }
 
     /// Stop everything cleanly. The sidecar is explicitly terminated here;

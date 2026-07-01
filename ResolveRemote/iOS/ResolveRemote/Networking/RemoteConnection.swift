@@ -44,6 +44,9 @@ final class RemoteConnection: ObservableObject {
     @Published private(set) var stillResult: StillResult?
     /// Round-trip latency in milliseconds (nil until the first pong).
     @Published private(set) var latencyMs: Int?
+    /// Latest Resolve capability probe result (Phase 11) and its raw JSON.
+    @Published private(set) var capabilityState: CapabilityState?
+    @Published private(set) var capabilityJSON: String?
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -286,8 +289,16 @@ final class RemoteConnection: ObservableObject {
     }
 
     /// Everything the helper can send, decoded leniently in one shape.
+    /// Ask the helper (→ sidecar) to introspect Resolve and broadcast a
+    /// capability_state. Result arrives on `capabilityState`/`capabilityJSON`.
+    func probeCapabilities() {
+        send(cmd: CommandName.capabilityProbe, mode: "system")
+    }
+
     private struct Reply: Decodable {
-        let cmd: String
+        // Most helper messages key on `cmd`; capability_state uses `type`.
+        let cmd: String?
+        let type: String?
         let presets: [String]?
         let name: String?
         let ok: Bool?
@@ -297,7 +308,7 @@ final class RemoteConnection: ObservableObject {
 
     private func handleLine(_ lineData: Data) {
         guard let reply = try? decoder.decode(Reply.self, from: lineData) else { return }
-        switch reply.cmd {
+        switch (reply.type ?? reply.cmd) ?? "" {
         case "color_state":
             guard let state = try? decoder.decode(ColorState.self, from: lineData) else { return }
             DispatchQueue.main.async {
@@ -318,6 +329,13 @@ final class RemoteConnection: ObservableObject {
         case "still_grabbed":
             let result = StillResult(id: UUID(), ok: reply.ok ?? false)
             DispatchQueue.main.async { self.stillResult = result }
+        case "capability_state":
+            guard let caps = try? decoder.decode(CapabilityState.self, from: lineData) else { return }
+            let json = String(data: lineData, encoding: .utf8)
+            DispatchQueue.main.async {
+                self.capabilityState = caps
+                self.capabilityJSON = json
+            }
         case "pong":
             // handleLine runs on `queue`, so this is safe to touch directly.
             pendingPings = 0

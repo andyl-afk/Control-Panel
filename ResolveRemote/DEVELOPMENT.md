@@ -132,6 +132,30 @@ broadcast back to all clients. Tunable constants (step sizes, clamps,
 strengths, rate limits) are grouped at the top of `resolve_bridge.py` and
 of the relevant Swift files.
 
+## Capability Probe
+
+A diagnostic that discovers what the installed DaVinci Resolve actually
+supports, so the UI can enable/label controls honestly.
+
+- Command (app → helper): `{"v":1,"mode":"system","cmd":"capability_probe"}`.
+  Routed by `CommandRouter` (mode `system`) to the sidecar, which handles it
+  on the reader thread (like `bypass`) — it works with no project/clip and
+  never blocks grading.
+- Response (helper → all clients): one line
+  `{"v":1,"type":"capability_state", resolve_connected, product_name,
+  version_string, current_page, current_project, current_timeline,
+  current_video_item, features:{name:status}, warnings:[], errors:[]}` where
+  status is `supported | unsupported | unknown | error`.
+- The sidecar (`resolve_bridge.py`) introspects via `has_method` /
+  `feature_from_method` / `safe_call`; one failed check never aborts the
+  probe. AI features and the Photo page default to `unknown` and are never
+  invoked (the probe must not disrupt the user or run expensive actions).
+- Surfaced in the app under Settings → DIAGNOSTICS → Resolve capabilities
+  (Probe / Copy JSON), in the menu bar app ("Probe Resolve Capabilities"),
+  and in the CLI (`[capability]` log lines).
+- **Caveat:** the probe only proves availability on *this* installed
+  system — it does not guarantee a feature works in every project state.
+
 ## Finding the Mac's IP (manual fallback)
 
 The helper menu shows it; or `ipconfig getifaddr en0`; or System
