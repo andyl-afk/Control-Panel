@@ -20,6 +20,7 @@ struct SettingsView: View {
     // Read by HapticsEngine.
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
     @AppStorage("hapticIntensity") private var hapticIntensity = "medium"
+    @AppStorage("wheelTextureEnabled") private var wheelTextureEnabled = true
     @FocusState private var focusedField: Field?
 
     var body: some View {
@@ -112,6 +113,11 @@ struct SettingsView: View {
                                 .minimumScaleFactor(0.8)
                         }
                         Spacer()
+                        if connection.isConnected, let ms = connection.latencyMs {
+                            Text("\(ms) ms")
+                                .font(.caption.monospacedDigit())
+                                .foregroundColor(latencyColor(ms))
+                        }
                     }
                 }
 
@@ -134,6 +140,14 @@ struct SettingsView: View {
                         // Sample the new strength immediately.
                         HapticsEngine.shared.heavyBump()
                     }
+
+                    Toggle(isOn: $wheelTextureEnabled) {
+                        Text("Wheel texture (continuous spin feel)")
+                            .font(.footnote)
+                            .foregroundColor(Theme.textPrimary)
+                    }
+                    .tint(Theme.colorAccent)
+                    .disabled(!hapticsEnabled)
                 }
 
                 section("ABOUT") {
@@ -199,6 +213,14 @@ struct SettingsView: View {
         case .connected:                 return .green
         case .connecting, .reconnecting: return .orange
         case .disconnected, .error:      return .red
+        }
+    }
+
+    private func latencyColor(_ ms: Int) -> Color {
+        switch ms {
+        case ..<40:   return .green
+        case ..<120:  return .orange
+        default:      return .red
         }
     }
 

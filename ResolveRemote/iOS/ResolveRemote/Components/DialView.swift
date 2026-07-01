@@ -49,6 +49,8 @@ struct DialView: View {
     private let maxShuttleLevel = 3
     private let pointsPerStepVertical: CGFloat = 8
     private let degreesPerStepVertical: Double = 5
+    /// Angular speed (rad/s) at which the wheel texture reaches full intensity.
+    private let textureFullSpeed: Double = 12
     /// Two-finger rotation: degrees per master tick.
     private let rotationDegreesPerTick: Double = 2.0
     /// The cap (trackball area) radius as a fraction of dial size.
@@ -70,6 +72,7 @@ struct DialView: View {
     @State private var shuttleLevel = 0
     @State private var lastY: CGFloat?          // vertical: previous sample
     @State private var residualY: CGFloat = 0
+    @State private var lastSampleTime: TimeInterval?  // for texture velocity
     @State private var lastBalancePoint: CGPoint? // trackball: previous sample
     @State private var phase: GesturePhase = .undecided
     @State private var twoFingerActive = false
@@ -362,6 +365,7 @@ struct DialView: View {
             } else {
                 phase = .rotary
                 lastAngle = angle(of: value.startLocation, geo: geo)
+                HapticsEngine.shared.startWheelTexture()
             }
         }
 
@@ -412,7 +416,17 @@ struct DialView: View {
         }
     }
 
+    /// Drive the continuous wheel texture from how fast the finger is moving.
+    private func pushTexture(delta: Double) {
+        let now = Date.timeIntervalSinceReferenceDate
+        let dt = lastSampleTime.map { now - $0 } ?? (1.0 / 60.0)
+        lastSampleTime = now
+        let speed = abs(delta) / max(dt, 0.001) // rad/s
+        HapticsEngine.shared.updateWheelTexture(intensity: CGFloat(min(1.0, speed / textureFullSpeed)))
+    }
+
     private func handleJogDelta(_ delta: Double) {
+        pushTexture(delta: delta)
         accumulated += delta
         if indicatorAngle == nil {
             internalRotation += delta * 180 / .pi
@@ -436,6 +450,7 @@ struct DialView: View {
     }
 
     private func handleShuttleDelta(_ delta: Double) {
+        pushTexture(delta: delta)
         shuttleDeflection += delta
 
         let maxRadians = (shuttleLevelDegrees * .pi / 180) * Double(maxShuttleLevel) * 1.15
@@ -477,7 +492,10 @@ struct DialView: View {
         lastY = nil
         residualY = 0
         lastBalancePoint = nil
+        lastSampleTime = nil
         phase = .undecided
+
+        HapticsEngine.shared.stopWheelTexture()
 
         // Flush straight away so the final ticks aren't delayed by the timer.
         batcher.finish()

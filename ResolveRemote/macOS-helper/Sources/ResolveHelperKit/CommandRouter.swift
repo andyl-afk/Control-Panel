@@ -15,15 +15,24 @@ final class CommandRouter {
         self.colorBridge = colorBridge
     }
 
-    /// Handle one newline-delimited JSON line. Malformed input is logged and
+    /// Handle one newline-delimited JSON line. `reply` sends a line back to
+    /// the originating client (used for pong). Malformed input is logged and
     /// skipped — it must never bring the server down.
-    func handle(line: String) {
+    func handle(line: String, reply: (String) -> Void) {
         guard let data = line.data(using: .utf8) else { return }
         let command: Command
         do {
             command = try decoder.decode(Command.self, from: data)
         } catch {
             print("[router] ignoring malformed JSON: \(line)")
+            return
+        }
+
+        // Latency heartbeat: echo the phone's timestamp straight back so it
+        // can measure round-trip time. Not logged (fires every couple of
+        // seconds) and never touches the keyboard/colour paths.
+        if command.cmd == "ping" {
+            reply(#"{"v":1,"cmd":"pong","ts":\#(command.ts ?? 0)}"#)
             return
         }
 

@@ -42,6 +42,8 @@ final class RemoteConnection: ObservableObject {
     /// One-shot results; each reply gets a fresh id so onChange always fires.
     @Published private(set) var presetResult: PresetResult?
     @Published private(set) var stillResult: StillResult?
+    /// Round-trip latency in milliseconds (nil until the first pong).
+    @Published private(set) var latencyMs: Int?
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -67,6 +69,13 @@ final class RemoteConnection: ObservableObject {
     private let maxReconnectAttempts = 5
     private let reconnectDelay: TimeInterval = 2
     private var pendingReconnect: DispatchWorkItem?
+
+    // Heartbeat / latency (all touched only on `queue`)
+    private var ready = false
+    private var heartbeatTimer: DispatchSourceTimer?
+    private var pendingPings = 0
+    private let heartbeatInterval: TimeInterval = 2.5
+    private let maxMissedBeats = 3
 
     // MARK: - Connect / disconnect
 
@@ -191,6 +200,7 @@ final class RemoteConnection: ObservableObject {
             case .ready:
                 self.reconnectAttempts = 0
                 self.setState(.connected)
+                self.startHeartbeat()
             case .waiting(let error), .failed(let error):
                 // .waiting means NWConnection would keep retrying internally;
                 // we cancel and run our own bounded retry loop instead.
@@ -208,10 +218,46 @@ final class RemoteConnection: ObservableObject {
     }
 
     private func teardown() {
+        stopHeartbeat()
         guard let connection else { return }
         self.connection = nil
         connection.stateUpdateHandler = nil
         connection.cancel()
+    }
+
+    // MARK: - Heartbeat / latency
+
+    private func startHeartbeat() {
+        stopHeartbeat()
+        ready = true
+        pendingPings = 0
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + heartbeatInterval, repeating: heartbeatInterval)
+        timer.setEventHandler { [weak self] in self?.beat() }
+        heartbeatTimer = timer
+        timer.resume()
+    }
+
+    private func stopHeartbeat() {
+        ready = false
+        heartbeatTimer?.cancel()
+        heartbeatTimer = nil
+        pendingPings = 0
+        DispatchQueue.main.async { self.latencyMs = nil }
+    }
+
+    /// Send a ping; if several go unanswered, treat the link as dead and let
+    /// the reconnect loop take over (TCP alone can be slow to notice).
+    private func beat() {
+        guard ready, let connection else { return }
+        if pendingPings >= maxMissedBeats {
+            handleDrop(reason: "No response from helper")
+            return
+        }
+        pendingPings += 1
+        let ts = Date().timeIntervalSince1970
+        let line = #"{"v":1,"mode":"sys","cmd":"ping","ts":\#(ts)}"# + "\n"
+        connection.send(content: Data(line.utf8), completion: .contentProcessed { _ in })
     }
 
     private func receive(on connection: NWConnection) {
@@ -246,6 +292,7 @@ final class RemoteConnection: ObservableObject {
         let name: String?
         let ok: Bool?
         let reason: String?
+        let ts: Double?
     }
 
     private func handleLine(_ lineData: Data) {
@@ -271,6 +318,15 @@ final class RemoteConnection: ObservableObject {
         case "still_grabbed":
             let result = StillResult(id: UUID(), ok: reply.ok ?? false)
             DispatchQueue.main.async { self.stillResult = result }
+        case "pong":
+            // handleLine runs on `queue`, so this is safe to touch directly.
+            pendingPings = 0
+            if let ts = reply.ts {
+                let ms = max(0, Int(((Date().timeIntervalSince1970 - ts) * 1000).rounded()))
+                DispatchQueue.main.async {
+                    if self.latencyMs != ms { self.latencyMs = ms }
+                }
+            }
         default:
             break
         }

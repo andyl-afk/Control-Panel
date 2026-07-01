@@ -124,7 +124,12 @@ final class CommandServer {
                         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     buffer.removeSubrange(buffer.startIndex...newline)
                     if !line.isEmpty {
-                        self.router.handle(line: line)
+                        self.router.handle(line: line) { [weak connection] reply in
+                            connection?.send(
+                                content: Data((reply + "\n").utf8),
+                                completion: .contentProcessed { _ in }
+                            )
+                        }
                     }
                 }
             }

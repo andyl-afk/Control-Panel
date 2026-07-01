@@ -22,6 +22,7 @@ struct ResolveRemoteApp: App {
             switch phase {
             case .active:
                 // Launch and return-to-foreground both land here.
+                HapticsEngine.shared.prepare() // restart the haptic engine
                 autoConnectIfNeeded()
             case .background:
                 // Tear down cleanly so we don't leave a dead socket; we
