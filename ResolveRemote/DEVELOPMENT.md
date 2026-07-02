@@ -282,6 +282,48 @@ connected clients, exactly like `capability_state`; the iPad auto-sends a
 The polished Fusion surface (tool grid, parameter knob, XY pad, macros,
 comp actions) is a later phase and must wire only what this probe proves.
 
+## Fusion action smoke tests (Phase 16)
+
+Settings → Diagnostics → **Fusion smoke tests** proves the methods the
+Phase-15 probe *found* actually *execute* — probe presence is not the same
+as safe execution. Eleven `mode:"fusion"` commands, all handled on the
+sidecar's reader thread; every reply is one
+`{"type":"fusion_action_result","cmd":…,"ok":…,"message"/"reason"/
+"details"}` line broadcast to all clients.
+
+Read-only (no guard): `fusion_context`, `fusion_list_comps`,
+`fusion_list_tools`, `fusion_active_tool` (no selected tool is ok:true, not
+an error), `fusion_delete_comp_status` (reports whether delete exists —
+**deletes nothing**, deliberately, this phase).
+
+Path-taking: `fusion_export_comp` (requires `export_path`, parent folder
+must exist, optional `index` defaulting to 1 — the API exports by index);
+`fusion_import_comp` (requires `confirm:true` + an existing `import_path`).
+No default paths are ever invented.
+
+Guarded mutations (`confirm:true` or the sidecar replies
+`command_rejected: confirmation_required`): `fusion_add_comp`,
+`fusion_rename_comp` (index → name via GetFusionCompNameList, then
+RenameFusionCompByName), `fusion_add_tool_test`, `fusion_set_input_test`.
+
+Allowlists (constants at the top of `resolve_bridge.py`): tools —
+TextPlus, Background, Merge, Transform only; inputs — StyledText (Text
+tools, string), Size (Transform, float), Center (Transform, "x,y" point).
+The wire `value` is always a string; the sidecar coerces per rule and
+refuses anything it can't coerce (`unsupported_input_type`) — it never
+guesses. Wrong-kind targets (e.g. StyledText on a Merge) are refused too.
+
+Reason codes: `no_resolve`, `no_clip`, `no_comp`, `missing_path`,
+`invalid_path`, `missing_name`, `invalid_index`, `tool_not_allowlisted`,
+`tool_not_found`, `unsupported_input_type`, `unsupported`, `resolve_error`.
+A Fusion API failure emits a clean result — it never kills the sidecar.
+
+App side: results land in `fusionActionLog`/`lastFusionActionResult`
+(rejections of `fusion_*` commands route there, not to the colour log);
+the CLI prints `[fusion-action]` lines. The smoke panel is deliberately
+NOT wired into the Fusion mode tab — diagnostics only until the polished
+surface phase.
+
 ## Finding the Mac's IP (manual fallback)
 
 The helper menu shows it; or `ipconfig getifaddr en0`; or System

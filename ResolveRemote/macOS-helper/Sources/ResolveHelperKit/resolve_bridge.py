@@ -148,6 +148,20 @@ STATUS_UNKNOWN = "unknown"
 STATUS_ERROR = "error"
 
 
+# Phase 16 Fusion smoke tests: the ONLY tool ids fusion_add_tool_test may
+# create, and the ONLY tool inputs fusion_set_input_test may set. `kinds`
+# are substrings matched against the tool's registry id (TOOLS_RegID);
+# `coerce` is how the wire value (always a string) becomes a typed value —
+# a value that can't be coerced is refused (unsupported_input_type), never
+# guessed.
+FUSION_TOOL_ALLOWLIST = ("TextPlus", "Background", "Merge", "Transform")
+FUSION_INPUT_ALLOWLIST = {
+    "StyledText": {"kinds": ("Text",), "coerce": "str"},
+    "Size": {"kinds": ("Transform",), "coerce": "float"},
+    "Center": {"kinds": ("Transform",), "coerce": "point"},
+}
+
+
 def has_method(obj, name):
     """True if `obj` exposes a callable `name`. Resolve's bridge returns None
     (not AttributeError) for methods a given version doesn't have, so a plain
@@ -279,8 +293,8 @@ def emit_color_result(cmd, ok, message=None, reason=None, details=None):
     emit(payload)
 
 
-def emit_fusion_result(cmd, ok, message=None, reason=None, page=None):
-    """Phase 15 Fusion action reply: one fusion_action_result line."""
+def emit_fusion_result(cmd, ok, message=None, reason=None, page=None, details=None):
+    """Phase 15/16 Fusion action reply: one fusion_action_result line."""
     payload = {"v": 1, "type": "fusion_action_result", "cmd": cmd, "ok": bool(ok)}
     if message is not None:
         payload["message"] = message
@@ -288,6 +302,8 @@ def emit_fusion_result(cmd, ok, message=None, reason=None, page=None):
         payload["reason"] = reason
     if page is not None:
         payload["page"] = page
+    if details is not None:
+        payload["details"] = details
     emit(payload)
 
 
@@ -719,6 +735,497 @@ class ColorEngine:
                 emit_fusion_result("open_fusion_page", False,
                                    reason="resolve_error", message=str(exc))
                 log("open_fusion_page failed: %s" % exc)
+
+    # -- Fusion action smoke tests (Phase 16) --------------------------------
+    #
+    # These prove that the methods the Phase-15 probe found actually execute.
+    # Rules: mutating commands require confirm:true; tool creation and input
+    # setting are allowlisted; import/export need explicit paths; delete is
+    # status-only. A Fusion API failure emits a clean fusion_action_result —
+    # it never kills the sidecar.
+
+    def handle_fusion_action(self, cmd):
+        """Dispatch one mode:"fusion" smoke-test command on the reader
+        thread (instant, no colour-batch coupling)."""
+        name = cmd.get("cmd")
+        handlers = {
+            "fusion_context": self._fusion_cmd_context,
+            "fusion_list_comps": self._fusion_cmd_list_comps,
+            "fusion_list_tools": self._fusion_cmd_list_tools,
+            "fusion_active_tool": self._fusion_cmd_active_tool,
+            "fusion_export_comp": self._fusion_cmd_export_comp,
+            "fusion_import_comp": self._fusion_cmd_import_comp,
+            "fusion_add_comp": self._fusion_cmd_add_comp,
+            "fusion_rename_comp": self._fusion_cmd_rename_comp,
+            "fusion_add_tool_test": self._fusion_cmd_add_tool_test,
+            "fusion_set_input_test": self._fusion_cmd_set_input_test,
+            "fusion_delete_comp_status": self._fusion_cmd_delete_comp_status,
+        }
+        handler = handlers.get(name)
+        if handler is None:
+            emit_command_rejected(name or "?", "unknown_command",
+                                  "Unknown fusion command")
+            return
+        with self.lock:
+            try:
+                handler(cmd)
+            except Exception as exc:
+                log("fusion action %s failed: %s" % (name, exc))
+                emit_fusion_result(name, False, reason="resolve_error",
+                                   message=str(exc))
+
+    def _fusion_objects(self):
+        """Shared guard: (resolve, timeline, item, fusion, comp, reason).
+        `comp` is the current Fusion comp when one is open, else the clip's
+        first saved comp; any element may be None, with `reason` describing
+        the first gap."""
+        if not self.session.connect():
+            return None, None, None, None, None, self.session.reason
+        resolve = self.session.resolve
+        timeline, item, reason = self.session.current_context()
+        fusion = None
+        if has_method(resolve, "Fusion"):
+            fusion = safe_call(lambda: resolve.Fusion())
+        comp = None
+        if fusion is not None and has_method(fusion, "GetCurrentComp"):
+            comp = safe_call(lambda: fusion.GetCurrentComp())
+        if comp is None and item is not None \
+                and has_method(item, "GetFusionCompByIndex"):
+            count = self._fusion_comp_count(item)
+            if isinstance(count, int) and count >= 1:
+                comp = safe_call(lambda: item.GetFusionCompByIndex(1))
+        return resolve, timeline, item, fusion, comp, reason
+
+    def _fusion_comp_count(self, item):
+        if not has_method(item, "GetFusionCompCount"):
+            return None
+        count = safe_call(lambda: item.GetFusionCompCount())
+        if isinstance(count, float):
+            count = int(count)
+        return count if isinstance(count, int) else None
+
+    def _fusion_comp_names(self, item):
+        if not has_method(item, "GetFusionCompNameList"):
+            return None
+        names = safe_call(lambda: item.GetFusionCompNameList())
+        if isinstance(names, dict):
+            names = [names[key] for key in sorted(names)]
+        if isinstance(names, (list, tuple)):
+            return [str(name) for name in names]
+        return None
+
+    def _fusion_tools(self, comp):
+        """Raw tool objects from comp.GetToolList (read-only), or None."""
+        if not has_method(comp, "GetToolList"):
+            return None
+        tools = safe_call(lambda: comp.GetToolList(False))
+        if isinstance(tools, dict):
+            tools = [tools[key] for key in sorted(tools)]
+        return list(tools) if isinstance(tools, (list, tuple)) else None
+
+    def _tool_entry(self, tool):
+        """{name, type} for one tool, defensively (attrs may be missing)."""
+        attrs = {}
+        if has_method(tool, "GetAttrs"):
+            attrs = safe_call(lambda: tool.GetAttrs(), {}) or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+        name = attrs.get("TOOLS_Name") or safe_call(lambda: getattr(tool, "Name", None))
+        reg = attrs.get("TOOLS_RegID") or safe_call(lambda: getattr(tool, "ID", None))
+        return {"name": str(name) if name is not None else "?",
+                "type": str(reg) if reg is not None else "?"}
+
+    def _require_confirm(self, cmd):
+        """Guard for mutating smoke tests; rejects and returns False when
+        confirm:true is absent."""
+        if cmd.get("confirm") is True:
+            return True
+        name = cmd.get("cmd", "?")
+        emit_command_rejected(name, "confirmation_required",
+                              "%s requires confirm:true" % name)
+        return False
+
+    # -- read-only smoke tests ----------------------------------------------
+
+    def _fusion_cmd_context(self, cmd):
+        resolve, timeline, item, fusion, comp, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_context", False, reason="no_resolve",
+                               message=reason)
+            return
+        tools = self._fusion_tools(comp) if comp is not None else None
+        details = {
+            "current_page": safe_call(lambda: resolve.GetCurrentPage()),
+            "current_project": timeline is not None,
+            "current_timeline": timeline is not None,
+            "current_video_item": item is not None,
+            "fusion_object": fusion is not None,
+            "comp_count": self._fusion_comp_count(item),
+            "comp_names": self._fusion_comp_names(item),
+            "tool_count": len(tools) if tools is not None else None,
+        }
+        ok = item is not None
+        emit_fusion_result(
+            "fusion_context", ok,
+            message="Fusion context available" if ok else (reason or "No clip"),
+            reason=None if ok else "no_clip",
+            details=details)
+
+    def _fusion_cmd_list_comps(self, cmd):
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_list_comps", False, reason="no_resolve",
+                               message=reason)
+            return
+        if item is None:
+            emit_fusion_result("fusion_list_comps", False, reason="no_clip",
+                               message=reason)
+            return
+        count = self._fusion_comp_count(item)
+        names = self._fusion_comp_names(item)
+        if count is None and names is None:
+            emit_fusion_result("fusion_list_comps", False, reason="unsupported",
+                               message="This clip exposes no Fusion comp methods")
+            return
+        emit_fusion_result("fusion_list_comps", True,
+                           message="Listed Fusion comps",
+                           details={"comp_count": count, "comp_names": names})
+
+    def _fusion_cmd_list_tools(self, cmd):
+        resolve, _, item, _, comp, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_list_tools", False, reason="no_resolve",
+                               message=reason)
+            return
+        if comp is None:
+            emit_fusion_result(
+                "fusion_list_tools", False, reason="no_comp",
+                message=reason or "No Fusion comp available — open the Fusion "
+                                  "page on a clip with a comp")
+            return
+        tools = self._fusion_tools(comp)
+        if tools is None:
+            emit_fusion_result("fusion_list_tools", False, reason="unsupported",
+                               message="GetToolList is unavailable on this comp")
+            return
+        entries = [self._tool_entry(tool) for tool in tools]
+        emit_fusion_result("fusion_list_tools", True,
+                           message="Listed Fusion tools",
+                           details={"tool_count": len(entries), "tools": entries})
+
+    def _fusion_cmd_active_tool(self, cmd):
+        resolve, _, item, _, comp, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_active_tool", False, reason="no_resolve",
+                               message=reason)
+            return
+        if comp is None:
+            emit_fusion_result("fusion_active_tool", False, reason="no_comp",
+                               message=reason or "No Fusion comp available")
+            return
+        missing = object()
+        active = safe_call(lambda: getattr(comp, "ActiveTool", None), missing)
+        if active is missing:
+            emit_fusion_result("fusion_active_tool", False,
+                               reason="resolve_error",
+                               message="Reading ActiveTool failed")
+            return
+        # No selected tool is a valid answer, not a failure.
+        emit_fusion_result(
+            "fusion_active_tool", True,
+            message="Active tool: %s" % (self._tool_entry(active)["name"]
+                                         if active is not None else "none selected"),
+            details={"active_tool": self._tool_entry(active)
+                     if active is not None else None})
+
+    def _fusion_cmd_delete_comp_status(self, cmd):
+        """Status only — reports whether DeleteFusionCompByName exists.
+        NOTHING is deleted in this phase."""
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_delete_comp_status", False,
+                               reason="no_resolve", message=reason)
+            return
+        emit_fusion_result(
+            "fusion_delete_comp_status", True,
+            message="Delete comp is status-only in this phase; nothing was deleted",
+            details={"delete_comp": feature_from_method(item, "DeleteFusionCompByName")})
+
+    # -- path-taking smoke tests --------------------------------------------
+
+    def _fusion_cmd_export_comp(self, cmd):
+        path = str(cmd.get("export_path") or "").strip()
+        if not path:
+            emit_fusion_result("fusion_export_comp", False, reason="missing_path",
+                               message="fusion_export_comp requires export_path")
+            return
+        path = os.path.expanduser(path)
+        parent = os.path.dirname(path) or "."
+        if not os.path.isdir(parent):
+            emit_fusion_result("fusion_export_comp", False, reason="invalid_path",
+                               message="Parent folder does not exist: %s" % parent)
+            return
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_export_comp", False, reason="no_resolve",
+                               message=reason)
+            return
+        if item is None:
+            emit_fusion_result("fusion_export_comp", False, reason="no_clip",
+                               message=reason)
+            return
+        if not has_method(item, "ExportFusionComp"):
+            emit_fusion_result("fusion_export_comp", False, reason="unsupported",
+                               message="ExportFusionComp is unavailable")
+            return
+        # The API exports by comp index (no "current comp index" getter);
+        # default to the first comp.
+        try:
+            index = int(cmd.get("index") or 1)
+        except (TypeError, ValueError):
+            emit_fusion_result("fusion_export_comp", False, reason="invalid_index",
+                               message="index must be a number")
+            return
+        result = item.ExportFusionComp(path, index)
+        ok = bool(result)
+        log("fusion_export_comp: index=%d path=%s ok=%s" % (index, path, ok))
+        emit_fusion_result(
+            "fusion_export_comp", ok,
+            message="Exported comp %d" % index if ok else "Resolve refused the export",
+            reason=None if ok else "resolve_error",
+            details={"export_path": path, "index": index})
+
+    def _fusion_cmd_import_comp(self, cmd):
+        if not self._require_confirm(cmd):
+            return
+        path = str(cmd.get("import_path") or "").strip()
+        if not path:
+            emit_fusion_result("fusion_import_comp", False, reason="missing_path",
+                               message="fusion_import_comp requires import_path")
+            return
+        path = os.path.expanduser(path)
+        if not os.path.isfile(path):
+            emit_fusion_result("fusion_import_comp", False, reason="invalid_path",
+                               message="No file at %s" % path)
+            return
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_import_comp", False, reason="no_resolve",
+                               message=reason)
+            return
+        if item is None:
+            emit_fusion_result("fusion_import_comp", False, reason="no_clip",
+                               message=reason)
+            return
+        if not has_method(item, "ImportFusionComp"):
+            emit_fusion_result("fusion_import_comp", False, reason="unsupported",
+                               message="ImportFusionComp is unavailable")
+            return
+        comp = item.ImportFusionComp(path)
+        ok = comp is not None
+        log("fusion_import_comp: path=%s ok=%s" % (path, ok))
+        emit_fusion_result(
+            "fusion_import_comp", ok,
+            message="Imported comp" if ok else "Resolve refused the import",
+            reason=None if ok else "resolve_error",
+            details={"import_path": path,
+                     "comp_count": self._fusion_comp_count(item),
+                     "comp_names": self._fusion_comp_names(item)})
+
+    # -- comp-mutating smoke tests ------------------------------------------
+
+    def _fusion_cmd_add_comp(self, cmd):
+        if not self._require_confirm(cmd):
+            return
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_add_comp", False, reason="no_resolve",
+                               message=reason)
+            return
+        if item is None:
+            emit_fusion_result("fusion_add_comp", False, reason="no_clip",
+                               message=reason)
+            return
+        if not has_method(item, "AddFusionComp"):
+            emit_fusion_result("fusion_add_comp", False, reason="unsupported",
+                               message="AddFusionComp is unavailable")
+            return
+        comp = item.AddFusionComp()
+        ok = comp is not None
+        log("fusion_add_comp: ok=%s" % ok)
+        emit_fusion_result(
+            "fusion_add_comp", ok,
+            message="Added a Fusion comp" if ok else "Resolve refused to add a comp",
+            reason=None if ok else "resolve_error",
+            details={"comp_count": self._fusion_comp_count(item),
+                     "comp_names": self._fusion_comp_names(item)})
+
+    def _fusion_cmd_rename_comp(self, cmd):
+        if not self._require_confirm(cmd):
+            return
+        new_name = str(cmd.get("name") or "").strip()
+        if not new_name:
+            emit_fusion_result("fusion_rename_comp", False, reason="missing_name",
+                               message="fusion_rename_comp requires a non-empty name")
+            return
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_rename_comp", False, reason="no_resolve",
+                               message=reason)
+            return
+        if item is None:
+            emit_fusion_result("fusion_rename_comp", False, reason="no_clip",
+                               message=reason)
+            return
+        names = self._fusion_comp_names(item)
+        try:
+            index = int(cmd.get("index"))
+        except (TypeError, ValueError):
+            emit_fusion_result("fusion_rename_comp", False, reason="invalid_index",
+                               message="fusion_rename_comp requires a comp index (1-based)")
+            return
+        if not names or index < 1 or index > len(names):
+            emit_fusion_result(
+                "fusion_rename_comp", False, reason="invalid_index",
+                message="No comp at index %d (clip has %d)" % (index, len(names or [])))
+            return
+        if not has_method(item, "RenameFusionCompByName"):
+            emit_fusion_result("fusion_rename_comp", False, reason="unsupported",
+                               message="RenameFusionCompByName is unavailable")
+            return
+        # The API renames by name, so the index is mapped through the list.
+        old_name = names[index - 1]
+        ok = bool(item.RenameFusionCompByName(old_name, new_name))
+        log("fusion_rename_comp: %r -> %r ok=%s" % (old_name, new_name, ok))
+        emit_fusion_result(
+            "fusion_rename_comp", ok,
+            message="Renamed %r to %r" % (old_name, new_name) if ok
+                    else "Resolve refused the rename",
+            reason=None if ok else "resolve_error",
+            details={"comp_names": self._fusion_comp_names(item)})
+
+    # -- tool-mutating smoke tests (allowlisted) ------------------------------
+
+    def _fusion_cmd_add_tool_test(self, cmd):
+        if not self._require_confirm(cmd):
+            return
+        tool_id = str(cmd.get("tool_id") or "").strip()
+        if tool_id not in FUSION_TOOL_ALLOWLIST:
+            emit_fusion_result(
+                "fusion_add_tool_test", False, reason="tool_not_allowlisted",
+                message="Only %s may be added by the smoke test"
+                        % ", ".join(FUSION_TOOL_ALLOWLIST))
+            return
+        resolve, _, item, _, comp, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_add_tool_test", False, reason="no_resolve",
+                               message=reason)
+            return
+        if comp is None:
+            emit_fusion_result("fusion_add_tool_test", False, reason="no_comp",
+                               message=reason or "No Fusion comp available")
+            return
+        if not has_method(comp, "AddTool"):
+            emit_fusion_result("fusion_add_tool_test", False, reason="unsupported",
+                               message="AddTool is unavailable on this comp")
+            return
+        tool = comp.AddTool(tool_id)
+        ok = tool is not None
+        log("fusion_add_tool_test: %s ok=%s" % (tool_id, ok))
+        emit_fusion_result(
+            "fusion_add_tool_test", ok,
+            message="Added %s" % tool_id if ok
+                    else "Resolve refused to add %s" % tool_id,
+            reason=None if ok else "resolve_error",
+            details={"tool": self._tool_entry(tool) if ok else None})
+
+    def _fusion_cmd_set_input_test(self, cmd):
+        if not self._require_confirm(cmd):
+            return
+        tool_name = str(cmd.get("tool_name") or "").strip()
+        input_name = str(cmd.get("input_name") or "").strip()
+        if not tool_name or not input_name:
+            emit_fusion_result(
+                "fusion_set_input_test", False, reason="missing_name",
+                message="fusion_set_input_test requires tool_name and input_name")
+            return
+        rule = FUSION_INPUT_ALLOWLIST.get(input_name)
+        if rule is None:
+            emit_fusion_result(
+                "fusion_set_input_test", False, reason="unsupported_input_type",
+                message="Only %s may be set by the smoke test"
+                        % ", ".join(sorted(FUSION_INPUT_ALLOWLIST)))
+            return
+        raw = cmd.get("value")
+        value, coerce_error = self._coerce_input_value(rule["coerce"], raw)
+        if coerce_error:
+            emit_fusion_result("fusion_set_input_test", False,
+                               reason="unsupported_input_type", message=coerce_error)
+            return
+        resolve, _, item, _, comp, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_set_input_test", False, reason="no_resolve",
+                               message=reason)
+            return
+        if comp is None:
+            emit_fusion_result("fusion_set_input_test", False, reason="no_comp",
+                               message=reason or "No Fusion comp available")
+            return
+        tools = self._fusion_tools(comp) or []
+        tool = None
+        for candidate in tools:
+            if self._tool_entry(candidate)["name"] == tool_name:
+                tool = candidate
+                break
+        if tool is None:
+            emit_fusion_result("fusion_set_input_test", False, reason="tool_not_found",
+                               message="No tool named %r in the comp" % tool_name)
+            return
+        # The input must be on the right KIND of tool (StyledText on Text
+        # tools, Size/Center on Transform) — never set blind.
+        tool_type = self._tool_entry(tool)["type"]
+        if not any(kind.lower() in tool_type.lower() for kind in rule["kinds"]):
+            emit_fusion_result(
+                "fusion_set_input_test", False, reason="unsupported_input_type",
+                message="%s is only settable on %s tools (got %s)"
+                        % (input_name, "/".join(rule["kinds"]), tool_type))
+            return
+        if not has_method(tool, "SetInput"):
+            emit_fusion_result("fusion_set_input_test", False, reason="unsupported",
+                               message="SetInput is unavailable on this tool")
+            return
+        tool.SetInput(input_name, value)
+        log("fusion_set_input_test: %s.%s = %r" % (tool_name, input_name, value))
+        emit_fusion_result(
+            "fusion_set_input_test", True,
+            message="Set %s on %s" % (input_name, tool_name),
+            details={"tool_name": tool_name, "input_name": input_name,
+                     "value": raw})
+
+    @staticmethod
+    def _coerce_input_value(kind, raw):
+        """Wire values arrive as strings; coerce per allowlist rule. Returns
+        (value, error_message) — a value that can't be coerced is refused,
+        never guessed."""
+        if raw is None:
+            return None, "fusion_set_input_test requires value"
+        text = str(raw)
+        if kind == "str":
+            return text, None
+        if kind == "float":
+            try:
+                return float(text), None
+            except ValueError:
+                return None, "%r is not a number" % text
+        if kind == "point":
+            parts = [part.strip() for part in text.split(",")]
+            try:
+                if len(parts) != 2:
+                    raise ValueError
+                return [float(parts[0]), float(parts[1])], None
+            except ValueError:
+                return None, "%r is not an \"x,y\" point" % text
+        return None, "No coercion rule for %s" % kind
 
     # -- bypass (hold-to-compare) -------------------------------------------
 
@@ -1176,6 +1683,10 @@ def main():
                 # The one mutating Fusion action this phase; instant, off
                 # the colour batch.
                 engine.handle_open_fusion_page(cmd)
+            elif cmd.get("mode") == "fusion":
+                # Phase 16 smoke-test actions: immediate, guarded
+                # (confirm:true) and allowlisted inside the dispatcher.
+                engine.handle_fusion_action(cmd)
             else:
                 commands.put(cmd)
         commands.put(sentinel)  # stdin closed: the helper went away

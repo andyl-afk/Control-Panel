@@ -25,6 +25,14 @@ struct Command: Encodable {
     let confirm: Bool?
     let lut_path: String?
     let drx_path: String?
+    // Phase 16 Fusion smoke tests. `value` is always a string on the wire;
+    // the sidecar coerces it per its input allowlist.
+    let export_path: String?
+    let import_path: String?
+    let tool_id: String?
+    let tool_name: String?
+    let input_name: String?
+    let value: String?
     let ts: Double
 }
 
@@ -196,7 +204,22 @@ enum CommandName {
     static let capabilityProbe = "capability_probe"
 
     // Fusion mode (mode: "fusion") — Phase 15. fusion_probe is pure
-    // introspection; open_fusion_page is the only mutating Fusion action.
+    // introspection; open_fusion_page switches Resolve to the Fusion page.
     static let fusionProbe = "fusion_probe"
     static let openFusionPage = "open_fusion_page"
+
+    // Fusion smoke tests (mode: "fusion") — Phase 16. Mutating commands
+    // require confirm:true; add-tool/set-input are allowlisted sidecar-side;
+    // delete is status-only.
+    static let fusionContext = "fusion_context"
+    static let fusionListComps = "fusion_list_comps"
+    static let fusionListTools = "fusion_list_tools"
+    static let fusionActiveTool = "fusion_active_tool"
+    static let fusionExportComp = "fusion_export_comp"
+    static let fusionImportComp = "fusion_import_comp"
+    static let fusionAddComp = "fusion_add_comp"
+    static let fusionRenameComp = "fusion_rename_comp"
+    static let fusionAddToolTest = "fusion_add_tool_test"
+    static let fusionSetInputTest = "fusion_set_input_test"
+    static let fusionDeleteCompStatus = "fusion_delete_comp_status"
 }

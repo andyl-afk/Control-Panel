@@ -38,6 +38,10 @@ public final class HelperCore {
     public var onFusionCapabilityState: ((String) -> Void)?
     public private(set) var lastFusionCapabilityState: String?
 
+    /// Phase 16: raw fusion_action_result line, fired on main. One-shot
+    /// action outcomes are not cached (unlike probe state).
+    public var onFusionActionResult: ((String) -> Void)?
+
     private let keySender = KeySender()
     private let colorBridge = ColorBridge()
     private let router: CommandRouter
@@ -63,6 +67,10 @@ public final class HelperCore {
                 DispatchQueue.main.async {
                     self.lastFusionCapabilityState = line
                     self.onFusionCapabilityState?(line)
+                }
+            case "fusion_action_result":
+                DispatchQueue.main.async {
+                    self.onFusionActionResult?(line)
                 }
             default:
                 break

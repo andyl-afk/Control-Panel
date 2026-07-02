@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var showCapabilities = false
     @State private var showSmokeTests = false
     @State private var showFusionCapabilities = false
+    @State private var showFusionSmokeTests = false
 
     var body: some View {
         ZStack {
@@ -198,6 +199,21 @@ struct SettingsView: View {
                         }
                     }
                     .buttonStyle(.plain)
+
+                    Button {
+                        showFusionSmokeTests = true
+                    } label: {
+                        HStack {
+                            Text("Fusion smoke tests")
+                                .font(.footnote)
+                                .foregroundColor(Theme.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 section("ABOUT") {
@@ -237,6 +253,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showFusionCapabilities) {
             FusionCapabilitiesView()
+                .environmentObject(connection)
+        }
+        .sheet(isPresented: $showFusionSmokeTests) {
+            FusionSmokeTestView()
                 .environmentObject(connection)
         }
     }

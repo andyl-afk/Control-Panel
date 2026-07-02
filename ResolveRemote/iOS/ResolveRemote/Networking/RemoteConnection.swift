@@ -56,8 +56,10 @@ final class RemoteConnection: ObservableObject {
     @Published private(set) var fusionCapabilityState: FusionCapabilityState?
     @Published private(set) var fusionCapabilityJSON: String?
     @Published private(set) var fusionCapabilityReceivedAt: Date?
-    /// Last open_fusion_page outcome (fusion_action_result), fresh id per reply.
+    /// Last Fusion action outcome (fusion_action_result), fresh id per reply,
+    /// plus a Phase 16 rolling log (newest first) for the smoke-test panel.
     @Published private(set) var lastFusionActionResult: ColorActionResult?
+    @Published private(set) var fusionActionLog: [ColorActionResult] = []
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -147,7 +149,13 @@ final class RemoteConnection: ObservableObject {
         index: Int? = nil,
         confirm: Bool? = nil,
         lutPath: String? = nil,
-        drxPath: String? = nil
+        drxPath: String? = nil,
+        exportPath: String? = nil,
+        importPath: String? = nil,
+        toolId: String? = nil,
+        toolName: String? = nil,
+        inputName: String? = nil,
+        value: String? = nil
     ) {
         guard isConnected, let connection else { return }
 
@@ -171,6 +179,12 @@ final class RemoteConnection: ObservableObject {
             confirm: confirm,
             lut_path: lutPath,
             drx_path: drxPath,
+            export_path: exportPath,
+            import_path: importPath,
+            tool_id: toolId,
+            tool_name: toolName,
+            input_name: inputName,
+            value: value,
             ts: Date().timeIntervalSince1970
         )
 
@@ -386,7 +400,13 @@ final class RemoteConnection: ObservableObject {
                 json: String(data: lineData, encoding: .utf8) ?? "",
                 receivedAt: Date()
             )
-            DispatchQueue.main.async { self.lastFusionActionResult = result }
+            DispatchQueue.main.async {
+                self.lastFusionActionResult = result
+                self.fusionActionLog.insert(result, at: 0)
+                if self.fusionActionLog.count > 50 {
+                    self.fusionActionLog.removeLast(self.fusionActionLog.count - 50)
+                }
+            }
         case "color_action_result", "command_rejected":
             let isRejection = (reply.type ?? reply.cmd) == "command_rejected"
             let result = ColorActionResult(
@@ -399,11 +419,22 @@ final class RemoteConnection: ObservableObject {
                 json: String(data: lineData, encoding: .utf8) ?? "",
                 receivedAt: Date()
             )
+            // Rejections of fusion_* commands belong to the Fusion log, not
+            // the colour one (Phase 16).
+            let isFusion = isRejection && (reply.cmd ?? "").hasPrefix("fusion_")
             DispatchQueue.main.async {
-                self.lastColorActionResult = result
-                self.colorActionLog.insert(result, at: 0)
-                if self.colorActionLog.count > 50 {
-                    self.colorActionLog.removeLast(self.colorActionLog.count - 50)
+                if isFusion {
+                    self.lastFusionActionResult = result
+                    self.fusionActionLog.insert(result, at: 0)
+                    if self.fusionActionLog.count > 50 {
+                        self.fusionActionLog.removeLast(self.fusionActionLog.count - 50)
+                    }
+                } else {
+                    self.lastColorActionResult = result
+                    self.colorActionLog.insert(result, at: 0)
+                    if self.colorActionLog.count > 50 {
+                        self.colorActionLog.removeLast(self.colorActionLog.count - 50)
+                    }
                 }
             }
         case "pong":

@@ -136,6 +136,18 @@ core.onFusionCapabilityState = { line in
         for warning in warnings { print("[fusion]   warning: \(warning)") }
     }
 }
+// One readable line per Fusion smoke-test outcome (Phase 16).
+core.onFusionActionResult = { line in
+    guard let data = line.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        print("[fusion-action] \(line)")
+        return
+    }
+    let cmd = (obj["cmd"] as? String) ?? "?"
+    let ok = (obj["ok"] as? Bool) ?? false
+    let note = (obj["message"] as? String) ?? (obj["reason"] as? String) ?? ""
+    print("[fusion-action] cmd=\(cmd) ok=\(ok)\(note.isEmpty ? "" : " — \(note)")")
+}
 
 do {
     try core.start()
