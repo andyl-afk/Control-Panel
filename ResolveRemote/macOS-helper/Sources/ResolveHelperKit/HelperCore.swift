@@ -63,8 +63,15 @@ public final class HelperCore {
         }
         server.onClientCountChanged = { [weak self] count in
             DispatchQueue.main.async {
-                self?.clientCount = count
-                self?.onClientCountChange?(count)
+                guard let self else { return }
+                // A client that just connected missed any earlier probe —
+                // re-broadcast the cached capability state so its UI can
+                // gate controls immediately (Phase 12).
+                if count > self.clientCount, let cached = self.lastCapabilityState {
+                    self.server.broadcast(line: cached)
+                }
+                self.clientCount = count
+                self.onClientCountChange?(count)
             }
         }
         server.onListenerFailed = { [weak self] message in

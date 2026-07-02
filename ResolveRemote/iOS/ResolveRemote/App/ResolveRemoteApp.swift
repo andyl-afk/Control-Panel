@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @main
 struct ResolveRemoteApp: App {
@@ -79,6 +80,17 @@ struct RootView: View {
     @State private var tab: AppTab = .edit
 
     var body: some View {
+        // Idiom, not size class: big iPhones report regular width in
+        // landscape, and the phone layout must never be replaced there.
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            iPadDashboardView()
+        } else {
+            phoneBody
+        }
+    }
+
+    /// The Phase 5.1 iPhone layout, unchanged.
+    private var phoneBody: some View {
         VStack(spacing: 0) {
             Group {
                 switch tab {

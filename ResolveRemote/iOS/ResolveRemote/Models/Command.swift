@@ -80,6 +80,37 @@ struct CapabilityState: Decodable, Equatable {
     let errors: [String]?
 }
 
+/// How a probed feature gates in the UI. `missing` means we have no answer
+/// for it at all (never probed, helper never replied, or key absent).
+enum FeatureStatus: String {
+    case supported
+    case unsupported
+    case unknown
+    case error
+    case missing
+
+    init(raw: String?) {
+        self = raw.flatMap(FeatureStatus.init(rawValue:)) ?? .missing
+    }
+}
+
+extension CapabilityState {
+    func status(for feature: String) -> FeatureStatus {
+        FeatureStatus(raw: features?[feature])
+    }
+
+    func isSupported(_ feature: String) -> Bool { status(for: feature) == .supported }
+    func isUnknown(_ feature: String) -> Bool { status(for: feature) == .unknown }
+    func isUnsupported(_ feature: String) -> Bool { status(for: feature) == .unsupported }
+}
+
+extension Optional where Wrapped == CapabilityState {
+    /// Gating that survives having no capability state yet: nil → .missing.
+    func status(for feature: String) -> FeatureStatus {
+        self?.status(for: feature) ?? .missing
+    }
+}
+
 /// Command names understood by the Phase 1 helper. Using constants instead of
 /// loose strings keeps the views honest.
 enum CommandName {

@@ -156,6 +156,41 @@ supports, so the UI can enable/label controls honestly.
 - **Caveat:** the probe only proves availability on *this* installed
   system — it does not guarantee a feature works in every project state.
 
+## iPad dashboard + capability gating (Phase 12)
+
+`Views/iPad/` holds an iPad-only control surface (page rail: Edit / Colour /
+Fairlight / Settings) selected by **idiom** (`userInterfaceIdiom == .pad`),
+never by size class — big iPhones in landscape must keep the phone layout.
+
+Gating rules (`FeatureStatus` from the capability probe + local `wired` flag):
+
+| Status      | UI behaviour                                              |
+| ----------- | --------------------------------------------------------- |
+| supported   | enabled **only if** the control is also `wired`           |
+| unknown     | "Experimental" badge, disabled                             |
+| missing     | (no probe yet) treated as unknown/Experimental, disabled   |
+| unsupported | "Unsupported" badge, disabled                              |
+| error       | "Error" badge, disabled                                    |
+| not wired   | "Not wired" badge regardless of status — never executes    |
+
+Not-wired/blocked taps call a local `onBlocked(message)` → transient toast
+in the status strip; **nothing is ever sent to the helper** for unproven
+controls. Dangerous-but-unwired actions (Reset Grade) additionally carry a
+"Dangerous" badge.
+
+Wired command inventory reused by the iPad UI (all pre-existing): edit
+keyboard commands (jog/shuttle/transport/shortcuts/marker), `color_delta`,
+`param_delta` (contrast/pivot/sat/temp/tint), `balance_delta`,
+`color_reset`, `set_node`, `bypass`, `grab_still`, `list_presets`/
+`apply_preset`, `color_status`, `capability_probe`. Temp/Tint are CDL
+approximations (Slope skew) and are labelled "CDL approx".
+
+The helper re-broadcasts its cached `capability_state` to newly connected
+clients (HelperCore), and the iPad auto-sends one `capability_probe` on
+connect, so the dashboard gates correctly without manual probing. The iPad
+UI exposes only proven or explicitly experimental controls — never fake
+support.
+
 ## Finding the Mac's IP (manual fallback)
 
 The helper menu shows it; or `ipconfig getifaddr en0`; or System

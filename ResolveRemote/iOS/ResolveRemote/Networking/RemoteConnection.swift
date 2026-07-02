@@ -47,6 +47,8 @@ final class RemoteConnection: ObservableObject {
     /// Latest Resolve capability probe result (Phase 11) and its raw JSON.
     @Published private(set) var capabilityState: CapabilityState?
     @Published private(set) var capabilityJSON: String?
+    /// When the last capability_state arrived (drives the iPad "probe age").
+    @Published private(set) var capabilityReceivedAt: Date?
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -335,6 +337,7 @@ final class RemoteConnection: ObservableObject {
             DispatchQueue.main.async {
                 self.capabilityState = caps
                 self.capabilityJSON = json
+                self.capabilityReceivedAt = Date()
             }
         case "pong":
             // handleLine runs on `queue`, so this is safe to touch directly.
