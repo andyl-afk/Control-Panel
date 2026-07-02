@@ -62,6 +62,7 @@ struct PrimaryColourWheelView: View {
                 DialView(
                     speed: 1.0, // slider speed travels in the command instead
                     accent: target.accent,
+                    ringHue: true, // the mockup's colour-sweep ring
                     indicatorAngle: indicatorAngle,
                     balance: target == .sat ? nil : currentBalance,
                     onTicks: sendTicks,
@@ -77,9 +78,30 @@ struct PrimaryColourWheelView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topTrailing) {
+                resetButton // circular reset beside the wheel, mock-style
+            }
 
             readoutRow
         }
+    }
+
+    private var resetButton: some View {
+        Button {
+            guard isLive else { return }
+            HapticsEngine.shared.heavyBump()
+            connection.send(cmd: CommandName.colorReset, mode: "color", target: target.rawValue)
+        } label: {
+            Image(systemName: "arrow.counterclockwise")
+                .font(.footnote)
+                .foregroundColor(Theme.textSecondary)
+                .frame(width: 44, height: 44)
+                .background(Theme.surface)
+                .clipShape(Circle())
+                .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(!isLive)
     }
 
     // MARK: - Gate overlay
@@ -127,22 +149,6 @@ struct PrimaryColourWheelView: View {
             Text(currentValue.map { String(format: "%.3f", $0) } ?? "—")
                 .font(.system(size: 24, weight: .medium).monospacedDigit())
                 .foregroundColor(Theme.textPrimary)
-
-            Button {
-                guard isLive else { return }
-                HapticsEngine.shared.heavyBump()
-                connection.send(cmd: CommandName.colorReset, mode: "color", target: target.rawValue)
-            } label: {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.footnote)
-                    .foregroundColor(Theme.textSecondary)
-                    .frame(width: 44, height: 44)
-                    .background(Theme.surface)
-                    .clipShape(Circle())
-                    .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .disabled(!isLive)
         }
     }
 

@@ -138,3 +138,97 @@ struct ControlSurfaceButton: View {
         .buttonStyle(.plain)
     }
 }
+
+// MARK: - Mock-style panel chrome (Phase 13)
+
+/// A mockup-style panel card: tracked uppercase header over content on a
+/// surface with a hairline border.
+struct PadPanel<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TrackedLabel(text: title, size: 9)
+            content
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.stroke, lineWidth: 1))
+    }
+}
+
+/// Labelled transport row (REW / STEP − / PLAY / STEP + / F FWD) with the
+/// mockup's green play button. iPad-only — the iPhone keeps the shared
+/// TransportBar untouched. Sends the same existing edit commands.
+struct PadTransportRow: View {
+    var send: (String) -> Void
+
+    private let items: [(label: String, icon: String, cmd: String, prominent: Bool)] = [
+        ("REW", "backward.fill", CommandName.shuttleLeft, false),
+        ("STEP −", "backward.frame.fill", CommandName.stepLeft, false),
+        ("PLAY / PAUSE", "playpause.fill", CommandName.playPause, true),
+        ("STEP +", "forward.frame.fill", CommandName.stepRight, false),
+        ("F FWD", "forward.fill", CommandName.shuttleRight, false),
+    ]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(items, id: \.cmd) { item in
+                Button {
+                    send(item.cmd)
+                } label: {
+                    VStack(spacing: 5) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 17))
+                        TrackedLabel(
+                            text: item.label,
+                            size: 7,
+                            color: item.prominent ? .black : Theme.textSecondary
+                        )
+                    }
+                    .foregroundColor(item.prominent ? .black : Theme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 58)
+                    .background(item.prominent ? Theme.colorAccent : Theme.surfaceRaised)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+/// The mockup's numbered custom-shortcut strip (1–8 + …). Inert until
+/// Phase 14 wires assignments — taps only raise a local toast.
+struct CustomShortcutStrip: View {
+    var onBlocked: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(1...8, id: \.self) { number in
+                stripButton("\(number)")
+            }
+            stripButton("…")
+        }
+    }
+
+    private func stripButton(_ label: String) -> some View {
+        Button {
+            onBlocked("Custom shortcuts — coming in Phase 14")
+        } label: {
+            Text(label)
+                .font(.footnote.weight(.semibold))
+                .foregroundColor(Theme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+}

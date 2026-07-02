@@ -1,38 +1,39 @@
 import SwiftUI
 
-/// The four iPad control-surface modes.
+/// The iPad control-surface modes. DELIVER is a Phase 13 placeholder tab
+/// (mock parity) — its controls arrive in a later phase.
 enum PadMode: String, CaseIterable {
     case edit = "EDIT"
     case colour = "COLOR"
     case fairlight = "FAIRLIGHT"
+    case deliver = "DELIVER"
     case settings = "SETTINGS"
-
-    var icon: String {
-        switch self {
-        case .edit:      return "squares.below.rectangle"
-        case .colour:    return "circle.hexagongrid"
-        case .fairlight: return "waveform"
-        case .settings:  return "gearshape"
-        }
-    }
 
     var accent: Color {
         switch self {
         case .edit:      return Theme.editAccent
         case .colour:    return Theme.colorAccent
         case .fairlight: return .orange
+        case .deliver:   return Theme.gain
         case .settings:  return Theme.textPrimary
         }
     }
+
+    /// The four tabs shown in the top bar (Settings lives in the bottom bar
+    /// and behind the gear, like the mockup).
+    static let topTabs: [PadMode] = [.edit, .colour, .fairlight, .deliver]
 }
 
-/// Phase 12 — the iPad dashboard shell: left page rail, top status strip,
-/// and the active mode filling the rest. Consumes capability_state to gate
-/// controls honestly; the iPhone layout is untouched.
+/// Phase 13 shell, arranged like the product mockup: top tab bar with
+/// connection dot + gear, right PAGES rail, bottom Dashboard/Macros/Settings
+/// bar, and a toast line for blocked (not-wired/unproven) controls. All
+/// capability gating from Phase 12 is unchanged.
 struct iPadDashboardView: View {
     @EnvironmentObject private var connection: RemoteConnection
 
     @State private var mode: PadMode = .edit
+    /// Where "Dashboard" in the bottom bar returns to from Settings.
+    @State private var lastWorkMode: PadMode = .edit
     /// Transient local message when a not-wired/unproven control is tapped.
     @State private var blockedMessage: String?
 
@@ -40,12 +41,10 @@ struct iPadDashboardView: View {
         ZStack {
             ThemeBackground()
 
-            HStack(spacing: 0) {
-                PageRailView(selection: $mode)
+            VStack(spacing: 0) {
+                topBar
 
-                VStack(spacing: 10) {
-                    iPadStatusStripView(blockedMessage: blockedMessage)
-
+                HStack(spacing: 12) {
                     Group {
                         switch mode {
                         case .edit:
@@ -54,15 +53,42 @@ struct iPadDashboardView: View {
                             iPadColourModeView(onBlocked: showBlocked)
                         case .fairlight:
                             iPadFairlightModeView(onBlocked: showBlocked)
+                        case .deliver:
+                            deliverPlaceholder
                         case .settings:
                             iPadSettingsModeView()
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    if mode != .settings {
+                        pagesRail
+                    }
                 }
                 .padding(12)
+
+                bottomBar
+            }
+
+            // Blocked-control toast, floating above the bottom bar. Local
+            // only — blocked taps never reach the helper.
+            if let blockedMessage {
+                VStack {
+                    Spacer()
+                    Text(blockedMessage)
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Theme.surfaceRaised)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 1))
+                        .padding(.bottom, 58)
+                }
+                .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: blockedMessage)
         .onAppear {
             HapticsEngine.shared.prepare()
             probeIfConnected()
@@ -70,6 +96,179 @@ struct iPadDashboardView: View {
         .onChange(of: connection.isConnected) { _, connected in
             if connected { probeIfConnected() }
         }
+        .onChange(of: mode) { _, newMode in
+            if newMode != .settings { lastWorkMode = newMode }
+        }
+    }
+
+    // MARK: - Top bar (tabs + connection + gear)
+
+    private var topBar: some View {
+        ZStack {
+            HStack(spacing: 6) {
+                ForEach(PadMode.topTabs, id: \.self) { tab in
+                    Button {
+                        select(tab)
+                    } label: {
+                        TrackedLabel(
+                            text: tab.rawValue,
+                            size: 9,
+                            color: mode == tab ? .black : Theme.textSecondary
+                        )
+                        .padding(.horizontal, 18)
+                        .frame(height: 30)
+                        .background(mode == tab ? tab.accent : Theme.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Spacer()
+                Circle().fill(connectionColor).frame(width: 8, height: 8)
+                TrackedLabel(text: connectionLabel, size: 8)
+                if connection.isConnected, let ms = connection.latencyMs {
+                    Text("\(ms) ms")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundColor(Theme.textSecondary)
+                }
+                Button {
+                    select(.settings)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.trailing, 10)
+        }
+        .frame(height: 48)
+        .background(Theme.surface.opacity(0.5))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.stroke).frame(height: 1)
+        }
+    }
+
+    private var connectionColor: Color {
+        switch connection.state {
+        case .connected:                 return Color(red: 0.3, green: 0.9, blue: 0.45)
+        case .connecting, .reconnecting: return .orange
+        case .disconnected, .error:      return Theme.lift
+        }
+    }
+
+    private var connectionLabel: String {
+        switch connection.state {
+        case .connected:    return "CONNECTED"
+        case .connecting:   return "CONNECTING"
+        case .reconnecting: return "RECONNECTING"
+        case .disconnected: return "DISCONNECTED"
+        case .error:        return "ERROR"
+        }
+    }
+
+    // MARK: - Right PAGES rail (Resolve page switching — not wired yet)
+
+    private var pagesRail: some View {
+        let status = connection.capabilityState.status(for: "open_page")
+        let pages = ["CUT", "EDIT", "COLOR", "FAIRLIGHT", "DELIVER"]
+        return VStack(spacing: 8) {
+            TrackedLabel(text: "PAGES", size: 8)
+            CapabilityBadge(badge: status == .supported ? .supported : .experimental)
+
+            ForEach(pages, id: \.self) { page in
+                railButton(page) {
+                    showBlocked("\(page.capitalized) page — switching not wired yet")
+                }
+            }
+
+            Spacer()
+
+            railButton("SHIFT") {
+                showBlocked("Shift layer — coming in a later phase")
+            }
+        }
+        .frame(width: 86)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 6)
+        .background(Theme.surface.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.stroke, lineWidth: 1))
+    }
+
+    private func railButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            TrackedLabel(text: title, size: 8)
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Bottom bar (Dashboard / Macros / Settings)
+
+    private var bottomBar: some View {
+        HStack(spacing: 0) {
+            bottomItem("Dashboard", icon: "house", active: mode != .settings) {
+                select(lastWorkMode)
+            }
+            bottomItem("Macros", icon: "square.grid.2x2", active: false) {
+                showBlocked("Macros — coming in Phase 14")
+            }
+            bottomItem("Settings", icon: "gearshape", active: mode == .settings) {
+                select(.settings)
+            }
+        }
+        .frame(height: 46)
+        .background(Theme.surface)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.stroke).frame(height: 1)
+        }
+    }
+
+    private func bottomItem(_ title: String, icon: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                Text(title)
+                    .font(.caption)
+            }
+            .foregroundColor(active ? Theme.textPrimary : Theme.textSecondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Deliver placeholder (honest, not fake controls)
+
+    private var deliverPlaceholder: some View {
+        VStack(spacing: 10) {
+            TrackedLabel(text: "DELIVER", size: 12, color: Theme.textPrimary)
+            Text("Deliver controls aren't built yet — render queue and preset actions arrive in a later phase.")
+                .font(.footnote)
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 380)
+            CapabilityBadge(badge: .notWired)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Helpers
+
+    private func select(_ newMode: PadMode) {
+        guard mode != newMode else { return }
+        HapticsEngine.shared.buttonTap()
+        mode = newMode
     }
 
     private func probeIfConnected() {
@@ -83,145 +282,6 @@ struct iPadDashboardView: View {
         Task {
             try? await Task.sleep(for: .seconds(2.5))
             if blockedMessage == message { blockedMessage = nil }
-        }
-    }
-}
-
-/// Left navigation rail.
-struct PageRailView: View {
-    @Binding var selection: PadMode
-
-    var body: some View {
-        VStack(spacing: 6) {
-            ForEach(PadMode.allCases, id: \.self) { mode in
-                Button {
-                    if selection != mode {
-                        HapticsEngine.shared.buttonTap()
-                        selection = mode
-                    }
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: mode.icon)
-                            .font(.system(size: 18, weight: .medium))
-                        TrackedLabel(
-                            text: mode.rawValue,
-                            size: 7,
-                            color: selection == mode ? mode.accent : Theme.textSecondary
-                        )
-                    }
-                    .foregroundColor(selection == mode ? mode.accent : Theme.textSecondary)
-                    .frame(width: 72, height: 64)
-                    .background(selection == mode ? Theme.surface : .clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 8)
-        .background(Theme.surface.opacity(0.4))
-        .overlay(alignment: .trailing) {
-            Rectangle().fill(Theme.stroke).frame(width: 1)
-        }
-    }
-}
-
-/// Top status strip: helper + Resolve + capability summary + probe age.
-struct iPadStatusStripView: View {
-    @EnvironmentObject private var connection: RemoteConnection
-    var blockedMessage: String?
-
-    private var caps: CapabilityState? { connection.capabilityState }
-
-    var body: some View {
-        HStack(spacing: 14) {
-            statusItem(
-                dot: helperColor,
-                text: "Helper \(connection.state.label.lowercased())"
-            )
-
-            statusItem(
-                dot: caps?.resolve_connected == true ? .green : Theme.textSecondary,
-                text: resolveSummary
-            )
-
-            if let page = caps?.current_page {
-                TrackedLabel(text: "PAGE \(page.uppercased())", size: 8)
-            }
-
-            if caps != nil {
-                TrackedLabel(text: contextSummary, size: 8)
-            }
-
-            Spacer()
-
-            if let blockedMessage {
-                Text(blockedMessage)
-                    .font(.caption2)
-                    .foregroundColor(.orange)
-                    .lineLimit(1)
-                    .transition(.opacity)
-            } else if let receivedAt = connection.capabilityReceivedAt {
-                HStack(spacing: 4) {
-                    TrackedLabel(text: "PROBED", size: 7)
-                    Text(receivedAt, style: .relative)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundColor(Theme.textSecondary)
-                    Text("ago")
-                        .font(.caption2)
-                        .foregroundColor(Theme.textSecondary)
-                }
-            } else {
-                Text("Not probed yet")
-                    .font(.caption2)
-                    .foregroundColor(Theme.textSecondary)
-            }
-
-            if connection.isConnected, let ms = connection.latencyMs {
-                Text("\(ms) ms")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(Theme.textSecondary)
-            }
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 38)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke, lineWidth: 1))
-        .animation(.easeInOut(duration: 0.2), value: blockedMessage)
-    }
-
-    private var helperColor: Color {
-        switch connection.state {
-        case .connected:                 return .green
-        case .connecting, .reconnecting: return .orange
-        case .disconnected, .error:      return Theme.lift
-        }
-    }
-
-    private var resolveSummary: String {
-        guard let caps else { return "Resolve: unknown" }
-        guard caps.resolve_connected == true else { return "Resolve: not connected" }
-        let product = caps.product_name ?? "Resolve"
-        let version = caps.version_string ?? ""
-        return "\(product) \(version)".trimmingCharacters(in: .whitespaces)
-    }
-
-    private var contextSummary: String {
-        func mark(_ value: Bool?) -> String { value == true ? "✓" : "–" }
-        return "PROJ \(mark(caps?.current_project))  TL \(mark(caps?.current_timeline))  CLIP \(mark(caps?.current_video_item))"
-    }
-
-    private func statusItem(dot: Color, text: String) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(dot).frame(width: 8, height: 8)
-            Text(text)
-                .font(.caption)
-                .foregroundColor(Theme.textPrimary)
-                .lineLimit(1)
         }
     }
 }

@@ -12,18 +12,57 @@ struct iPadSettingsModeView: View {
     private var caps: CapabilityState? { connection.capabilityState }
 
     var body: some View {
+        // Three columns echoing the mockup's settings grid: connection &
+        // preferences | diagnostics | layout editor (Phase 14) + raw JSON.
         HStack(alignment: .top, spacing: 16) {
             // The phone Settings view is reused wholesale — same connection
             // fields, Bonjour list, haptics, and diagnostics entry point.
             SettingsView()
-                .frame(maxWidth: 430)
+                .frame(maxWidth: 390)
 
             diagnosticsColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            thirdColumn
+                .frame(width: 300)
         }
         .sheet(isPresented: $showFullCapabilities) {
             CapabilityProbeView()
                 .environmentObject(connection)
+        }
+    }
+
+    /// The mockup's SHORTCUT LAYOUT column — real editor lands in Phase 14.
+    private var thirdColumn: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 12) {
+                card("SHORTCUT LAYOUT") {
+                    Text("Assignable shortcut buttons per page — coming in Phase 14.")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    CapabilityBadge(badge: .notWired)
+                }
+
+                card("GENERAL") {
+                    Text("Jog sensitivity, shuttle max speed, and send rate preferences — coming in Phase 14.")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    CapabilityBadge(badge: .notWired)
+                }
+
+                if let json = connection.capabilityJSON {
+                    card("LAST CAPABILITY JSON") {
+                        Text(json)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(Theme.textSecondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.bottom, 12)
         }
     }
 
@@ -84,16 +123,6 @@ struct iPadSettingsModeView: View {
                     }
                     actionButton("Full Feature List", enabled: true) {
                         showFullCapabilities = true
-                    }
-                }
-
-                if let json = connection.capabilityJSON {
-                    card("LAST CAPABILITY JSON") {
-                        Text(json)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Theme.textSecondary)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

@@ -28,6 +28,9 @@ struct DialView: View {
     var accent: Color = Theme.knobNeutral
     /// Optional second accent: the ring becomes a gradient (temp knob).
     var accentSecondary: Color?
+    /// Full colour-sweep ring + green 12-o'clock dot (the iPad primary
+    /// grading wheel). Default off; all existing call sites are unchanged.
+    var ringHue: Bool = false
     /// External indicator override in degrees (0 = 12 o'clock).
     var indicatorAngle: Double?
     /// Puck position in balance units (|v| <= 1), from color_state.
@@ -106,11 +109,20 @@ struct DialView: View {
     private func dialFace(size: CGFloat) -> some View {
         let isLarge = size >= 90
         let tickCount = isLarge ? 24 : 12
-        let ringStyle = LinearGradient(
-            colors: [accent, accentSecondary ?? accent],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
+        let ringStyle: AnyShapeStyle = ringHue
+            ? AnyShapeStyle(AngularGradient(
+                colors: [.red, .yellow, .green, .cyan, .blue, Color(red: 0.85, green: 0.27, blue: 0.94), .red],
+                center: .center,
+                angle: .degrees(-90)
+              ))
+            : AnyShapeStyle(LinearGradient(
+                colors: [accent, accentSecondary ?? accent],
+                startPoint: .leading,
+                endPoint: .trailing
+              ))
+        let dotColor: Color = ringHue
+            ? Color(red: 0.3, green: 0.9, blue: 0.45)
+            : (accentSecondary ?? accent)
         let offNeutral = abs(indicatorAngle ?? internalRotation) > 0.5
         let capSize = size * capFraction
 
@@ -263,12 +275,13 @@ struct DialView: View {
             }
             .frame(width: capSize, height: capSize)
 
-            // 7. Bright accent dot fixed at 12 o'clock on the accent ring.
+            // 7. Bright accent dot fixed at 12 o'clock on the accent ring
+            //    (green on the hue-ring grading wheel, like the mockup).
             Circle()
-                .fill(accentSecondary ?? accent)
+                .fill(dotColor)
                 .frame(width: size * 0.035 + 2, height: size * 0.035 + 2)
                 .offset(y: -size * (isLarge ? 0.405 : 0.455))
-                .shadow(color: accent.opacity(touched ? 1.0 : 0.8), radius: 3)
+                .shadow(color: (ringHue ? dotColor : accent).opacity(touched ? 1.0 : 0.8), radius: 3)
         }
     }
 

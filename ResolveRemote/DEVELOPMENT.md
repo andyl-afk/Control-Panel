@@ -185,6 +185,14 @@ keyboard commands (jog/shuttle/transport/shortcuts/marker), `color_delta`,
 `apply_preset`, `color_status`, `capability_probe`. Temp/Tint are CDL
 approximations (Slope skew) and are labelled "CDL approx".
 
+**Phase 13** restyled the dashboard to the product mockup (top tab bar +
+DELIVER placeholder, right PAGES rail + SHIFT, bottom Dashboard/Macros/
+Settings bar, labelled green-play transport, all-knob adjustments, hue-ring
+primary wheel, numbered custom-shortcut strip) — restyle only, no new wired
+commands. **Phase 14 (queued):** wire the custom shortcut strip, the
+SHORTCUT LAYOUT editor, GENERAL prefs (jog sensitivity / shuttle max / send
+rate), and Macros.
+
 The helper re-broadcasts its cached `capability_state` to newly connected
 clients (HelperCore), and the iPad auto-sends one `capability_probe` on
 connect, so the dashboard gates correctly without manual probing. The iPad

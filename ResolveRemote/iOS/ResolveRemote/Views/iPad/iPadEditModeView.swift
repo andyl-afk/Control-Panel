@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// iPad Edit mode: big jog/shuttle/scrub dial on the left, transport and
-/// shortcuts on the right. Everything here rides the existing keyboard-path
-/// commands, so it stays useful even with no capability state — that path is
-/// the reliable baseline. Page-switch buttons are capability-labelled but
-/// not wired in this phase.
+/// iPad Edit mode, arranged like the mockup: jog wheel panel on the left
+/// (speed % above, JOG/SHUTTLE/SCRUB below), transport + shortcut panels on
+/// the right, and the numbered custom-shortcut strip along the bottom.
+/// Everything live rides the existing keyboard-path commands; the custom
+/// strip is inert until Phase 14.
 struct iPadEditModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
     var onBlocked: (String) -> Void
@@ -12,103 +12,94 @@ struct iPadEditModeView: View {
     @State private var wheelMode: WheelMode = .jog
     @State private var speed: Double = 1.0
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            wheelColumn
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private let speedRange: ClosedRange<Double> = 0.25...3.0
 
-            rightColumn
-                .frame(width: 380)
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                wheelPanel
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                rightColumn
+                    .frame(width: 380)
+            }
+
+            PadPanel(title: "CUSTOM SHORTCUTS") {
+                CustomShortcutStrip(onBlocked: onBlocked)
+            }
         }
     }
 
-    // MARK: - Left: the wheel
+    // MARK: - Left: jog wheel panel
 
-    private var wheelColumn: some View {
-        VStack(spacing: 14) {
-            ModeSelector(selection: $wheelMode)
-                .frame(maxWidth: 420)
+    private var wheelPanel: some View {
+        PadPanel(title: "JOG WHEEL") {
+            VStack(spacing: 12) {
+                speedRow
 
-            speedRow
-                .frame(maxWidth: 420)
+                ZStack {
+                    Circle()
+                        .fill(Theme.editAccent)
+                        .blur(radius: 80)
+                        .opacity(0.05)
+                        .scaleEffect(1.25)
 
-            ZStack {
-                Circle()
-                    .fill(Theme.editAccent)
-                    .blur(radius: 80)
-                    .opacity(0.05)
-                    .scaleEffect(1.25)
+                    DialView(
+                        mode: wheelMode,
+                        speed: speed,
+                        accent: Theme.editAccent,
+                        onTicks: { ticks in
+                            connection.send(cmd: CommandName.jog, ticks: ticks)
+                        },
+                        onShuttle: { level in
+                            connection.send(cmd: CommandName.shuttle, level: level)
+                        }
+                    )
+                    .frame(maxWidth: 430, maxHeight: 430)
+                    .opacity(connection.isConnected ? 1 : 0.55)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                DialView(
-                    mode: wheelMode,
-                    speed: speed,
-                    accent: Theme.editAccent,
-                    onTicks: { ticks in
-                        connection.send(cmd: CommandName.jog, ticks: ticks)
-                    },
-                    onShuttle: { level in
-                        connection.send(cmd: CommandName.shuttle, level: level)
-                    }
-                )
-                .frame(maxWidth: 460, maxHeight: 460)
-                .opacity(connection.isConnected ? 1 : 0.55)
+                ModeSelector(selection: $wheelMode)
+                    .frame(maxWidth: 380)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
+    /// The mockup shows speed as a percentage of the range.
+    private var speedPercent: Int {
+        let fraction = (speed - speedRange.lowerBound)
+            / (speedRange.upperBound - speedRange.lowerBound)
+        return Int((fraction * 100).rounded())
+    }
+
     private var speedRow: some View {
         HStack(spacing: 8) {
             TrackedLabel(text: "SPEED", size: 9)
-            Slider(value: $speed, in: 0.25...3.0)
-                .tint(Theme.colorAccent)
-            Text(String(format: "%.1fx", speed))
+            Slider(value: $speed, in: speedRange)
+                .tint(Theme.editAccent)
+            Text("\(speedPercent)%")
                 .font(.caption2.monospacedDigit())
                 .foregroundColor(Theme.textSecondary)
-                .frame(width: 32, alignment: .trailing)
+                .frame(width: 36, alignment: .trailing)
         }
+        .frame(maxWidth: 430)
     }
 
-    // MARK: - Right: transport, shortcuts, pages
+    // MARK: - Right: transport + shortcuts
 
     private var rightColumn: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            TrackedLabel(text: "TRANSPORT", size: 9)
-            TransportBar(send: sendCommand)
+        VStack(spacing: 12) {
+            PadPanel(title: "TRANSPORT") {
+                PadTransportRow(send: sendCommand)
+            }
 
-            TrackedLabel(text: "SHORTCUTS", size: 9)
-            ShortcutGrid(send: sendCommand)
-
-            TrackedLabel(text: "RESOLVE PAGES", size: 9)
-            pageButtons
-
-            TrackedLabel(text: "CUSTOM SHORTCUTS", size: 9)
-            Text("Custom shortcut strip — coming in a later phase.")
-                .font(.caption)
-                .foregroundColor(Theme.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Theme.surface.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            PadPanel(title: "EDIT SHORTCUTS") {
+                ShortcutGrid(send: sendCommand)
+            }
 
             Spacer()
-        }
-    }
-
-    /// Page switching exists in the scripting API (open_page) but is not
-    /// wired in Phase 12 — the tiles say so instead of guessing commands.
-    private var pageButtons: some View {
-        let status = connection.capabilityState.status(for: "open_page")
-        let pages = ["Cut", "Edit", "Color", "Fairlight", "Deliver"]
-        return HStack(spacing: 8) {
-            ForEach(pages, id: \.self) { page in
-                ControlSurfaceButton(
-                    title: page,
-                    status: status,
-                    wired: false,
-                    onBlocked: onBlocked
-                )
-            }
         }
     }
 
