@@ -125,10 +125,11 @@ Newline-delimited JSON over TCP (default port 49321), advertised over
 Bonjour as `_resolveremote._tcp`. Phone → helper commands carry
 `v/seq/mode/cmd/ts` plus per-command fields (`ticks`, `level`, `target`,
 `steps`, `speed`, `param`, `enabled`, `name`, `dx`, `dy`, `index`).
-`mode:"edit"` commands drive the keyboard path; `mode:"color"` commands are
-forwarded verbatim to the Python sidecar, whose stdout lines
-(`color_state`, `preset_list`, `preset_applied`, `still_grabbed`) are
-broadcast back to all clients. Tunable constants (step sizes, clamps,
+`mode:"edit"` commands drive the keyboard path; `mode:"color"`,
+`mode:"system"` and `mode:"fusion"` commands are forwarded verbatim to the
+Python sidecar, whose stdout lines (`color_state`, `preset_list`,
+`preset_applied`, `still_grabbed`, `capability_state`,
+`fusion_capability_state`, …) are broadcast back to all clients. Tunable constants (step sizes, clamps,
 strengths, rate limits) are grouped at the top of `resolve_bridge.py` and
 of the relevant Swift files.
 
@@ -158,9 +159,11 @@ supports, so the UI can enable/label controls honestly.
 
 ## iPad dashboard + capability gating (Phase 12)
 
-`Views/iPad/` holds an iPad-only control surface (page rail: Edit / Colour /
-Fairlight / Settings) selected by **idiom** (`userInterfaceIdiom == .pad`),
-never by size class — big iPhones in landscape must keep the phone layout.
+`Views/iPad/` holds an iPad-only control surface (tabs: Edit / Colour /
+Fusion / Deliver, plus Settings) selected by **idiom**
+(`userInterfaceIdiom == .pad`), never by size class — big iPhones in
+landscape must keep the phone layout. (The Fairlight tab was replaced by
+Fusion in Phase 15; Fairlight remains only as an inert PAGES-rail button.)
 
 Gating rules (`FeatureStatus` from the capability probe + local `wired` flag):
 
@@ -229,6 +232,55 @@ panel sends those directly. Magic Mask / Smart Reframe remain status-only
 Safety rules: destructive/expensive actions need explicit confirmation
 fields; path-taking actions need explicit paths; a probe saying "supported"
 means *available*, not automatically *safe production behaviour*.
+
+## Fusion capability probe (Phase 15)
+
+Answers "what can Resolve Remote do with Fusion on this install" before any
+Fusion UI is wired. The iPad FAIRLIGHT tab became FUSION; the Fusion mode
+view and the Settings → Diagnostics → **Fusion capabilities** sheet are
+probe-driven diagnostics, not the final surface.
+
+Two `mode:"fusion"` commands, both handled on the sidecar's reader thread
+(like `capability_probe` — they work with no project/clip and never block
+grading):
+
+- `fusion_probe` — pure introspection; emits one
+  `{"v":1,"type":"fusion_capability_state", resolve_connected, product_name,
+  version_string, current_page, current_project, current_timeline,
+  current_video_item, fusion_object, comp_count, comp_names, current_comp,
+  tool_count, features:{…}, warnings, errors}` line.
+- `open_fusion_page` — the ONLY mutating Fusion action this phase
+  (`resolve.OpenPage("fusion")`, success verified by re-reading
+  `GetCurrentPage`); replies with one
+  `{"type":"fusion_action_result","cmd":"open_fusion_page","ok":…,
+  "page"/"reason"/"message"}` line (reasons: `no_resolve`, `unsupported`,
+  `resolve_error`).
+
+Probe invocation tiers (the honesty rule, in code comments too):
+
+1. **Presence only, never invoked:** `OpenPage` and every comp/tool-mutating
+   method — `LoadFusionCompByName`, `AddFusionComp`, `ImportFusionComp`,
+   `ExportFusionComp`, `RenameFusionCompByName`, `DeleteFusionCompByName`,
+   `comp.AddTool`, `tool.SetInput`. "supported" = the method exists, not
+   that it was ever called. A fixed warning states this.
+2. **Read-only calls, `safe_call`-wrapped:** `resolve.Fusion()`,
+   `GetFusionCompCount()`, `GetFusionCompNameList()`,
+   `fusion.GetCurrentComp()`, comp handle via `GetFusionCompByIndex(1)`.
+3. **Comp internals, page-gated:** `comp.GetToolList(False)` / `ActiveTool`
+   are only invoked while `current_page == "fusion"` — the probe NEVER
+   switches the user's page (photo_page rule). Off the Fusion page they
+   report `unknown` plus a "open it and re-probe" warning.
+
+Surfaces: iPad Fusion tab (probe summary, wired Open Fusion Page, badged
+inert comp/tool placeholders), iPad PAGES rail (FUSION is the one wired page
+button, gated on the probed `open_fusion_page`), iPhone Settings sheet,
+menu bar ("Probe Fusion Capabilities"), CLI (`[fusion]` lines). The helper
+caches the last `fusion_capability_state` and re-broadcasts it to newly
+connected clients, exactly like `capability_state`; the iPad auto-sends a
+`fusion_probe` on connect.
+
+The polished Fusion surface (tool grid, parameter knob, XY pad, macros,
+comp actions) is a later phase and must wire only what this probe proves.
 
 ## Finding the Mac's IP (manual fallback)
 

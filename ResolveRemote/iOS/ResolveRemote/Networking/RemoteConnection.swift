@@ -52,6 +52,12 @@ final class RemoteConnection: ObservableObject {
     @Published private(set) var capabilityJSON: String?
     /// When the last capability_state arrived (drives the iPad "probe age").
     @Published private(set) var capabilityReceivedAt: Date?
+    /// Latest Fusion probe result (Phase 15), its raw JSON, and arrival time.
+    @Published private(set) var fusionCapabilityState: FusionCapabilityState?
+    @Published private(set) var fusionCapabilityJSON: String?
+    @Published private(set) var fusionCapabilityReceivedAt: Date?
+    /// Last open_fusion_page outcome (fusion_action_result), fresh id per reply.
+    @Published private(set) var lastFusionActionResult: ColorActionResult?
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -306,6 +312,18 @@ final class RemoteConnection: ObservableObject {
         send(cmd: CommandName.capabilityProbe, mode: "system")
     }
 
+    /// Ask the sidecar to introspect Fusion (Phase 15, non-mutating). Result
+    /// arrives on `fusionCapabilityState`/`fusionCapabilityJSON`.
+    func probeFusion() {
+        send(cmd: CommandName.fusionProbe, mode: "fusion")
+    }
+
+    /// The one mutating Fusion action this phase: switch Resolve to the
+    /// Fusion page. Outcome arrives on `lastFusionActionResult`.
+    func openFusionPage() {
+        send(cmd: CommandName.openFusionPage, mode: "fusion")
+    }
+
     private struct Reply: Decodable {
         // Most helper messages key on `cmd`; capability_state uses `type`.
         let cmd: String?
@@ -349,6 +367,26 @@ final class RemoteConnection: ObservableObject {
                 self.capabilityJSON = json
                 self.capabilityReceivedAt = Date()
             }
+        case "fusion_capability_state":
+            guard let caps = try? decoder.decode(FusionCapabilityState.self, from: lineData) else { return }
+            let json = String(data: lineData, encoding: .utf8)
+            DispatchQueue.main.async {
+                self.fusionCapabilityState = caps
+                self.fusionCapabilityJSON = json
+                self.fusionCapabilityReceivedAt = Date()
+            }
+        case "fusion_action_result":
+            let result = ColorActionResult(
+                id: UUID(),
+                cmd: reply.cmd ?? "?",
+                ok: reply.ok ?? false,
+                rejected: false,
+                message: reply.message,
+                reason: reply.reason,
+                json: String(data: lineData, encoding: .utf8) ?? "",
+                receivedAt: Date()
+            )
+            DispatchQueue.main.async { self.lastFusionActionResult = result }
         case "color_action_result", "command_rejected":
             let isRejection = (reply.type ?? reply.cmd) == "command_rejected"
             let result = ColorActionResult(

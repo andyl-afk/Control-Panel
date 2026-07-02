@@ -86,6 +86,12 @@ struct HelperMenu: View {
             Text(state.lastCapabilitySummary ?? "Last capability state: —")
                 .font(.caption)
 
+            Button("Probe Fusion Capabilities") {
+                state.probeFusion()
+            }
+            Text(state.lastFusionSummary ?? "Last fusion state: —")
+                .font(.caption)
+
             Divider()
 
             Toggle("Dry-run mode (log keys, don't send)", isOn: Binding(

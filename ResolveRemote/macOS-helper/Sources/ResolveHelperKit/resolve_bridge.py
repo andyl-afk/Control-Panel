@@ -279,6 +279,18 @@ def emit_color_result(cmd, ok, message=None, reason=None, details=None):
     emit(payload)
 
 
+def emit_fusion_result(cmd, ok, message=None, reason=None, page=None):
+    """Phase 15 Fusion action reply: one fusion_action_result line."""
+    payload = {"v": 1, "type": "fusion_action_result", "cmd": cmd, "ok": bool(ok)}
+    if message is not None:
+        payload["message"] = message
+    if reason is not None:
+        payload["reason"] = reason
+    if page is not None:
+        payload["page"] = page
+    emit(payload)
+
+
 def emit_command_rejected(cmd, reason, message=None):
     """A guarded command was refused (e.g. destructive without confirm)."""
     payload = {"v": 1, "type": "command_rejected", "cmd": cmd, "reason": reason}
@@ -507,6 +519,206 @@ class ColorEngine:
             if has_method(obj, name):
                 return STATUS_SUPPORTED
         return STATUS_UNKNOWN
+
+    # -- Fusion capability probe (Phase 15) ----------------------------------
+
+    def handle_fusion_probe(self, cmd):
+        """Introspect what Fusion exposes to scripting and emit one
+        fusion_capability_state line. Same contract as the capability probe:
+        runs on the reader thread, works with no project/clip, and never
+        mutates anything. Invocation tiers:
+          1. anything mutating (open page, add/import/export/rename/delete
+             comp, add tool, set input) is reported by PRESENCE ONLY;
+          2. read-only calls (Fusion(), comp count, comp names, current comp)
+             are invoked, safe_call-wrapped;
+          3. comp internals (tool list, active tool) are only invoked while
+             the Fusion page is already open — the probe never switches the
+             user's page (photo_page rule)."""
+        with self.lock:
+            warnings = []
+            errors = []
+            features = {}
+
+            connected = self.session.connect()
+            resolve = self.session.resolve if connected else None
+
+            product_name = None
+            version_string = None
+            current_page = None
+            if resolve is not None:
+                product_name = safe_call(lambda: resolve.GetProductName())
+                version_string = (
+                    safe_call(lambda: resolve.GetVersionString())
+                    or safe_call(lambda: resolve.GetVersion())
+                )
+                if isinstance(version_string, (list, tuple)):
+                    version_string = ".".join(str(part) for part in version_string)
+                current_page = safe_call(lambda: resolve.GetCurrentPage())
+            elif self.session.reason:
+                warnings.append(self.session.reason)
+
+            timeline, item, reason = (None, None, None)
+            if resolve is not None:
+                timeline, item, reason = self.session.current_context()
+                if item is None and reason:
+                    warnings.append(reason)
+
+            # Tier 1 — page switching, presence only (open_fusion_page is a
+            # separate explicit command; the probe never calls it).
+            features["open_fusion_page"] = feature_from_method(resolve, "OpenPage")
+
+            # Tier 2 — the FusionScript object; resolve.Fusion() is read-only.
+            fusion = None
+            if has_method(resolve, "Fusion"):
+                fusion = safe_call(lambda: resolve.Fusion())
+                features["fusion_object"] = (
+                    STATUS_SUPPORTED if fusion is not None else STATUS_UNKNOWN)
+            else:
+                features["fusion_object"] = feature_from_method(resolve, "Fusion")
+
+            # Tier 2 — TimelineItem comp management. Count and name list are
+            # read-only and invoked; everything mutating is presence only.
+            comp_count = None
+            comp_names = None
+            if has_method(item, "GetFusionCompCount"):
+                comp_count = safe_call(lambda: item.GetFusionCompCount())
+                if isinstance(comp_count, float):
+                    comp_count = int(comp_count)
+                features["comp_count"] = (
+                    STATUS_SUPPORTED if isinstance(comp_count, int) else STATUS_ERROR)
+                if not isinstance(comp_count, int):
+                    comp_count = None
+            else:
+                features["comp_count"] = feature_from_method(item, "GetFusionCompCount")
+            if has_method(item, "GetFusionCompNameList"):
+                comp_names = safe_call(lambda: item.GetFusionCompNameList())
+                if isinstance(comp_names, dict):
+                    # FusionScript sometimes hands back Lua-style tables.
+                    comp_names = [comp_names[key] for key in sorted(comp_names)]
+                if isinstance(comp_names, (list, tuple)):
+                    comp_names = [str(name) for name in comp_names]
+                    features["comp_names"] = STATUS_SUPPORTED
+                else:
+                    comp_names = None
+                    features["comp_names"] = STATUS_ERROR
+            else:
+                features["comp_names"] = feature_from_method(item, "GetFusionCompNameList")
+            features["get_comp_by_index"] = feature_from_method(item, "GetFusionCompByIndex")
+            features["load_comp"] = feature_from_method(item, "LoadFusionCompByName")
+            features["add_comp"] = feature_from_method(item, "AddFusionComp")
+            features["import_comp"] = feature_from_method(item, "ImportFusionComp")
+            features["export_comp"] = feature_from_method(item, "ExportFusionComp")
+            features["rename_comp"] = feature_from_method(item, "RenameFusionCompByName")
+            features["delete_comp"] = feature_from_method(item, "DeleteFusionCompByName")
+            warnings.append(
+                "Comp-mutating methods (add/import/export/rename/delete comp, "
+                "add tool, set input) are reported by presence only; the probe "
+                "never invokes them."
+            )
+
+            # Tier 3 — comp internals, only with the Fusion page already open.
+            current_comp = None
+            tool_count = None
+            features["tool_list"] = STATUS_UNKNOWN
+            features["active_tool"] = STATUS_UNKNOWN
+            features["add_tool"] = STATUS_UNKNOWN
+            features["set_tool_input"] = STATUS_UNKNOWN
+            comp = None
+            if fusion is not None and has_method(fusion, "GetCurrentComp"):
+                comp = safe_call(lambda: fusion.GetCurrentComp())
+                current_comp = comp is not None
+            if comp is None and isinstance(comp_count, int) and comp_count >= 1 \
+                    and has_method(item, "GetFusionCompByIndex"):
+                comp = safe_call(lambda: item.GetFusionCompByIndex(1))
+            if current_page == "fusion" and comp is not None:
+                tools = None
+                if has_method(comp, "GetToolList"):
+                    tools = safe_call(lambda: comp.GetToolList(False))
+                    if isinstance(tools, dict):
+                        tools = [tools[key] for key in sorted(tools)]
+                    if isinstance(tools, (list, tuple)):
+                        tool_count = len(tools)
+                        features["tool_list"] = STATUS_SUPPORTED
+                    else:
+                        tools = None
+                        features["tool_list"] = STATUS_ERROR
+                else:
+                    features["tool_list"] = STATUS_UNSUPPORTED
+                # ActiveTool is an attribute and None is a valid "nothing
+                # selected" answer — only an exception leaves it unknown.
+                missing = object()
+                active = safe_call(lambda: getattr(comp, "ActiveTool", None), missing)
+                if active is not missing:
+                    features["active_tool"] = STATUS_SUPPORTED
+                features["add_tool"] = (
+                    STATUS_SUPPORTED if has_method(comp, "AddTool") else STATUS_UNSUPPORTED)
+                if tools:
+                    features["set_tool_input"] = (
+                        STATUS_SUPPORTED if has_method(tools[0], "SetInput")
+                        else STATUS_UNKNOWN)
+            else:
+                warnings.append(
+                    "Fusion comp internals (tools, parameters) are only proven "
+                    "while the Fusion page is open — open it and re-probe. "
+                    "The probe never switches your page."
+                )
+
+            payload = {
+                "v": 1,
+                "type": "fusion_capability_state",
+                "resolve_connected": connected,
+                "product_name": product_name,
+                "version_string": version_string,
+                "current_page": current_page,
+                "current_project": timeline is not None or bool(
+                    resolve is not None and safe_call(
+                        lambda: resolve.GetProjectManager().GetCurrentProject()) is not None),
+                "current_timeline": timeline is not None,
+                "current_video_item": item is not None,
+                "fusion_object": fusion is not None,
+                "comp_count": comp_count,
+                "comp_names": comp_names,
+                "current_comp": current_comp,
+                "tool_count": tool_count,
+                "features": features,
+                "warnings": warnings,
+                "errors": errors,
+            }
+            emit(payload)
+            log("fusion probe: connected=%s page=%s comps=%s tools=%s"
+                % (connected, current_page, comp_count, tool_count))
+
+    def handle_open_fusion_page(self, cmd):
+        """The single mutating Fusion action this phase: switch Resolve to
+        the Fusion page. Success is verified by re-reading GetCurrentPage."""
+        with self.lock:
+            if not self.session.connect():
+                emit_fusion_result("open_fusion_page", False,
+                                   reason="no_resolve",
+                                   message=self.session.reason)
+                return
+            resolve = self.session.resolve
+            if not has_method(resolve, "OpenPage"):
+                emit_fusion_result(
+                    "open_fusion_page", False, reason="unsupported",
+                    message="This Resolve does not expose OpenPage to scripting")
+                return
+            try:
+                result = resolve.OpenPage("fusion")
+                page = safe_call(lambda: resolve.GetCurrentPage())
+                ok = bool(result) or page == "fusion"
+                emit_fusion_result(
+                    "open_fusion_page", ok, page=page,
+                    reason=None if ok else "resolve_error",
+                    message=None if ok else "Resolve refused to open the Fusion page")
+                log("open_fusion_page: ok=%s page=%s" % (ok, page))
+            except Exception as exc:
+                # Resolve most likely quit; drop the handle so the next
+                # command attempts a fresh connection.
+                self.session.resolve = None
+                emit_fusion_result("open_fusion_page", False,
+                                   reason="resolve_error", message=str(exc))
+                log("open_fusion_page failed: %s" % exc)
 
     # -- bypass (hold-to-compare) -------------------------------------------
 
@@ -956,6 +1168,14 @@ def main():
                 # System introspection: answer immediately, off the colour
                 # batch, so it works even with no project/clip open.
                 engine.handle_capability_probe(cmd)
+            elif cmd.get("cmd") == "fusion_probe":
+                # Fusion introspection (Phase 15): same contract as the
+                # capability probe — immediate, non-mutating.
+                engine.handle_fusion_probe(cmd)
+            elif cmd.get("cmd") == "open_fusion_page":
+                # The one mutating Fusion action this phase; instant, off
+                # the colour batch.
+                engine.handle_open_fusion_page(cmd)
             else:
                 commands.put(cmd)
         commands.put(sentinel)  # stdin closed: the helper went away

@@ -85,7 +85,7 @@ struct ColorActionResult: Identifiable, Equatable {
 /// Phase 11 — the Resolve capability probe result. Every field is optional so
 /// decoding tolerates missing keys and future additions. `features` maps a
 /// feature name to one of "supported" / "unsupported" / "unknown" / "error".
-struct CapabilityState: Decodable, Equatable {
+struct CapabilityState: Decodable, Equatable, FeatureReporting {
     let resolve_connected: Bool?
     let product_name: String?
     let version_string: String?
@@ -93,6 +93,28 @@ struct CapabilityState: Decodable, Equatable {
     let current_project: Bool?
     let current_timeline: Bool?
     let current_video_item: Bool?
+    let features: [String: String]?
+    let warnings: [String]?
+    let errors: [String]?
+}
+
+/// Phase 15 — the Fusion capability probe result (type:
+/// "fusion_capability_state"). Same decoding rules as CapabilityState.
+/// Mutating methods are probed by presence only — "supported" means the
+/// method exists, not that this app will call it.
+struct FusionCapabilityState: Decodable, Equatable, FeatureReporting {
+    let resolve_connected: Bool?
+    let product_name: String?
+    let version_string: String?
+    let current_page: String?
+    let current_project: Bool?
+    let current_timeline: Bool?
+    let current_video_item: Bool?
+    let fusion_object: Bool?
+    let comp_count: Int?
+    let comp_names: [String]?
+    let current_comp: Bool?
+    let tool_count: Int?
     let features: [String: String]?
     let warnings: [String]?
     let errors: [String]?
@@ -112,7 +134,13 @@ enum FeatureStatus: String {
     }
 }
 
-extension CapabilityState {
+/// Shared gating helpers for any probe result carrying a features map
+/// (CapabilityState, FusionCapabilityState).
+protocol FeatureReporting {
+    var features: [String: String]? { get }
+}
+
+extension FeatureReporting {
     func status(for feature: String) -> FeatureStatus {
         FeatureStatus(raw: features?[feature])
     }
@@ -122,7 +150,7 @@ extension CapabilityState {
     func isUnsupported(_ feature: String) -> Bool { status(for: feature) == .unsupported }
 }
 
-extension Optional where Wrapped == CapabilityState {
+extension Optional where Wrapped: FeatureReporting {
     /// Gating that survives having no capability state yet: nil → .missing.
     func status(for feature: String) -> FeatureStatus {
         self?.status(for: feature) ?? .missing
@@ -166,4 +194,9 @@ enum CommandName {
 
     // System mode (mode: "system")
     static let capabilityProbe = "capability_probe"
+
+    // Fusion mode (mode: "fusion") — Phase 15. fusion_probe is pure
+    // introspection; open_fusion_page is the only mutating Fusion action.
+    static let fusionProbe = "fusion_probe"
+    static let openFusionPage = "open_fusion_page"
 }

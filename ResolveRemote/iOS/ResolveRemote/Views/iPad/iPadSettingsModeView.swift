@@ -8,8 +8,10 @@ struct iPadSettingsModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
 
     @State private var showFullCapabilities = false
+    @State private var showFullFusionCapabilities = false
 
     private var caps: CapabilityState? { connection.capabilityState }
+    private var fusionCaps: FusionCapabilityState? { connection.fusionCapabilityState }
 
     var body: some View {
         // Three columns echoing the mockup's settings grid: connection &
@@ -28,6 +30,10 @@ struct iPadSettingsModeView: View {
         }
         .sheet(isPresented: $showFullCapabilities) {
             CapabilityProbeView()
+                .environmentObject(connection)
+        }
+        .sheet(isPresented: $showFullFusionCapabilities) {
+            FusionCapabilitiesView()
                 .environmentObject(connection)
         }
     }
@@ -123,6 +129,34 @@ struct iPadSettingsModeView: View {
                     }
                     actionButton("Full Feature List", enabled: true) {
                         showFullCapabilities = true
+                    }
+                }
+
+                card("FUSION (PHASE 15)") {
+                    row("Fusion object", yesNo(fusionCaps?.fusion_object))
+                    row("Comps on clip", fusionCaps?.comp_count.map(String.init) ?? "—")
+                    row("Tools in comp", fusionCaps?.tool_count.map(String.init) ?? "—")
+                    if let receivedAt = connection.fusionCapabilityReceivedAt {
+                        HStack {
+                            Text("Probed").font(.footnote).foregroundColor(Theme.textSecondary)
+                            Spacer()
+                            Text(receivedAt, style: .relative)
+                                .font(.footnote.monospacedDigit())
+                                .foregroundColor(Theme.textSecondary)
+                            Text("ago").font(.footnote).foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    actionButton("Probe Fusion", prominent: true, enabled: connection.isConnected) {
+                        connection.probeFusion()
+                    }
+                    actionButton("Copy Fusion JSON", enabled: connection.fusionCapabilityJSON != nil) {
+                        UIPasteboard.general.string = connection.fusionCapabilityJSON ?? ""
+                    }
+                    actionButton("Full Fusion List", enabled: true) {
+                        showFullFusionCapabilities = true
                     }
                 }
             }

@@ -33,6 +33,11 @@ public final class HelperCore {
     public var onCapabilityState: ((String) -> Void)?
     public private(set) var lastCapabilityState: String?
 
+    /// Same contract for the Fusion probe (Phase 15): raw
+    /// fusion_capability_state line, fired on main and cached.
+    public var onFusionCapabilityState: ((String) -> Void)?
+    public private(set) var lastFusionCapabilityState: String?
+
     private let keySender = KeySender()
     private let colorBridge = ColorBridge()
     private let router: CommandRouter
@@ -48,11 +53,19 @@ public final class HelperCore {
         colorBridge.onOutput = { [weak self] line in
             guard let self else { return }
             self.server.broadcast(line: line)
-            if Self.isCapabilityState(line) {
+            switch Self.messageType(line) {
+            case "capability_state":
                 DispatchQueue.main.async {
                     self.lastCapabilityState = line
                     self.onCapabilityState?(line)
                 }
+            case "fusion_capability_state":
+                DispatchQueue.main.async {
+                    self.lastFusionCapabilityState = line
+                    self.onFusionCapabilityState?(line)
+                }
+            default:
+                break
             }
         }
         // If a phone vanishes mid hold-to-compare, re-enable the node so a
@@ -65,10 +78,15 @@ public final class HelperCore {
             DispatchQueue.main.async {
                 guard let self else { return }
                 // A client that just connected missed any earlier probe —
-                // re-broadcast the cached capability state so its UI can
-                // gate controls immediately (Phase 12).
-                if count > self.clientCount, let cached = self.lastCapabilityState {
-                    self.server.broadcast(line: cached)
+                // re-broadcast the cached capability states so its UI can
+                // gate controls immediately (Phase 12; Fusion in Phase 15).
+                if count > self.clientCount {
+                    if let cached = self.lastCapabilityState {
+                        self.server.broadcast(line: cached)
+                    }
+                    if let cached = self.lastFusionCapabilityState {
+                        self.server.broadcast(line: cached)
+                    }
                 }
                 self.clientCount = count
                 self.onClientCountChange?(count)
@@ -93,12 +111,19 @@ public final class HelperCore {
         colorBridge.send(line: #"{"v":1,"seq":0,"mode":"system","cmd":"capability_probe"}"#)
     }
 
-    /// Cheap, spacing-tolerant check for a capability_state line.
-    private static func isCapabilityState(_ line: String) -> Bool {
+    /// Ask the sidecar to introspect Fusion and emit a
+    /// fusion_capability_state (broadcast and surfaced via
+    /// `onFusionCapabilityState`). Non-mutating (Phase 15).
+    public func probeFusion() {
+        colorBridge.send(line: #"{"v":1,"seq":0,"mode":"fusion","cmd":"fusion_probe"}"#)
+    }
+
+    /// Cheap, spacing-tolerant read of a sidecar line's "type" field.
+    private static func messageType(_ line: String) -> String? {
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return false }
-        return (obj["type"] as? String) == "capability_state"
+        else { return nil }
+        return obj["type"] as? String
     }
 
     /// Stop everything cleanly. The sidecar is explicitly terminated here;

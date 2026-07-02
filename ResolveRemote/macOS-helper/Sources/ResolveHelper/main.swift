@@ -114,6 +114,28 @@ core.onCapabilityState = { line in
         for warning in warnings { print("[capability]   warning: \(warning)") }
     }
 }
+// Same for the Fusion probe (Phase 15).
+core.onFusionCapabilityState = { line in
+    guard let data = line.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        print("[fusion] \(line)")
+        return
+    }
+    let connected = (obj["resolve_connected"] as? Bool) ?? false
+    let page = (obj["current_page"] as? String) ?? "-"
+    let compCount = (obj["comp_count"] as? Int).map(String.init) ?? "-"
+    let compNames = (obj["comp_names"] as? [String])?.joined(separator: ", ") ?? "-"
+    let toolCount = (obj["tool_count"] as? Int).map(String.init) ?? "-"
+    print("[fusion] resolve_connected=\(connected) page=\(page) comps=\(compCount) [\(compNames)] tools=\(toolCount)")
+    if let features = obj["features"] as? [String: String] {
+        for key in features.keys.sorted() {
+            print("[fusion]   \(key): \(features[key] ?? "?")")
+        }
+    }
+    if let warnings = obj["warnings"] as? [String], !warnings.isEmpty {
+        for warning in warnings { print("[fusion]   warning: \(warning)") }
+    }
+}
 
 do {
     try core.start()

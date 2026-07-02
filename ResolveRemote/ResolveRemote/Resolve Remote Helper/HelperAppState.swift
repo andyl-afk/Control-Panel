@@ -26,6 +26,8 @@ final class HelperAppState: ObservableObject {
     @Published private(set) var launchAtLogin: Bool
     /// One-line summary of the last capability probe (Phase 11).
     @Published private(set) var lastCapabilitySummary: String?
+    /// One-line summary of the last Fusion probe (Phase 15).
+    @Published private(set) var lastFusionSummary: String?
 
     init() {
         let savedDryRun = UserDefaults.standard.bool(forKey: Self.dryRunKey)
@@ -43,11 +45,19 @@ final class HelperAppState: ObservableObject {
         core.onCapabilityState = { [weak self] line in
             self?.lastCapabilitySummary = Self.summarize(line)
         }
+        core.onFusionCapabilityState = { [weak self] line in
+            self?.lastFusionSummary = Self.summarizeFusion(line)
+        }
     }
 
     /// Ask the helper to probe Resolve; the result updates `lastCapabilitySummary`.
     func probeCapabilities() {
         core.probeCapabilities()
+    }
+
+    /// Ask the helper to probe Fusion; the result updates `lastFusionSummary`.
+    func probeFusion() {
+        core.probeFusion()
     }
 
     /// Condense a capability_state JSON line into a menu-friendly one-liner.
@@ -62,6 +72,21 @@ final class HelperAppState: ObservableObject {
         let version = (obj["version_string"] as? String) ?? "?"
         let page = (obj["current_page"] as? String) ?? "-"
         return "\(product) \(version) — \(page)"
+    }
+
+    /// Condense a fusion_capability_state JSON line into a one-liner.
+    private static func summarizeFusion(_ line: String) -> String {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return "Fusion state received" }
+        if (obj["resolve_connected"] as? Bool) != true {
+            return "Resolve not connected"
+        }
+        let reachable = (obj["fusion_object"] as? Bool) == true
+        let page = (obj["current_page"] as? String) ?? "-"
+        let comps = (obj["comp_count"] as? Int).map { "\($0) comp\($0 == 1 ? "" : "s")" }
+            ?? "no clip"
+        return "Fusion \(reachable ? "reachable" : "unreachable") — \(comps) — page \(page)"
     }
 
     // MARK: - Toggles (driven from the menu)

@@ -40,11 +40,12 @@ final class CommandRouter {
         let levelText = command.level.map { " level=\($0)" } ?? ""
         print("[cmd] seq=\(command.seq) mode=\(command.mode) cmd=\(command.cmd)\(ticksText)\(levelText)")
 
-        // Colour and system commands go to the Python sidecar untouched; the
-        // sidecar's reply (e.g. capability_state) comes back via onOutput and
-        // is broadcast to every client. The keyboard path below stays
-        // exclusively for edit mode.
-        if command.mode == "color" || command.mode == "system" {
+        // Colour, system and fusion commands go to the Python sidecar
+        // untouched; the sidecar's reply (e.g. capability_state,
+        // fusion_capability_state) comes back via onOutput and is broadcast
+        // to every client. The keyboard path below stays exclusively for
+        // edit mode.
+        if command.mode == "color" || command.mode == "system" || command.mode == "fusion" {
             colorBridge.send(line: line)
             return
         }
