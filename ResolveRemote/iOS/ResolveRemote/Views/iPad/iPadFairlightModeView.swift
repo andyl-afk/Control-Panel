@@ -15,11 +15,11 @@ struct iPadFairlightModeView: View {
         VStack(spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: 12) {
-                    PadPanel(title: "TRANSPORT") {
+                    PadPanel(title: "TRANSPORT", centered: true) {
                         PadTransportRow(send: sendCommand)
                     }
 
-                    PadPanel(title: "MARKERS") {
+                    PadPanel(title: "MARKERS", centered: true) {
                         markerRow
                     }
 
@@ -28,11 +28,11 @@ struct iPadFairlightModeView: View {
                 .frame(maxWidth: .infinity)
 
                 VStack(spacing: 12) {
-                    PadPanel(title: "TRACK UTILITIES") {
+                    PadPanel(title: "TRACK UTILITIES", centered: true) {
                         trackRow
                     }
 
-                    PadPanel(title: "PROCESSING") {
+                    PadPanel(title: "PROCESSING", centered: true) {
                         processingRow
                     }
 
@@ -41,7 +41,7 @@ struct iPadFairlightModeView: View {
                 .frame(width: 380)
             }
 
-            PadPanel(title: "CUSTOM SHORTCUTS") {
+            PadPanel(title: "CUSTOM SHORTCUTS", centered: true) {
                 CustomShortcutStrip(onBlocked: onBlocked)
             }
         }

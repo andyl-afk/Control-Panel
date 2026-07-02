@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// iPad Edit mode, arranged like the mockup: jog wheel panel on the left
-/// (speed % above, JOG/SHUTTLE/SCRUB below), transport + shortcut panels on
-/// the right, and the numbered custom-shortcut strip along the bottom.
-/// Everything live rides the existing keyboard-path commands; the custom
-/// strip is inert until Phase 14.
+/// iPad Edit mode, arranged like the mockup: a narrow JOG WHEEL panel on
+/// the left (plain dark hardware wheel — no accent ring), a wide column of
+/// TRANSPORT + EDIT SHORTCUTS, and the numbered custom-shortcut strip along
+/// the bottom. Everything live rides the existing keyboard-path commands;
+/// the custom strip is inert until Phase 14.
 struct iPadEditModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
     var onBlocked: (String) -> Void
@@ -18,11 +18,12 @@ struct iPadEditModeView: View {
         VStack(spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 wheelPanel
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(width: 430)
 
                 rightColumn
-                    .frame(width: 380)
+                    .frame(maxWidth: .infinity)
             }
+            .frame(maxHeight: .infinity, alignment: .top)
 
             PadPanel(title: "CUSTOM SHORTCUTS") {
                 CustomShortcutStrip(onBlocked: onBlocked)
@@ -30,38 +31,30 @@ struct iPadEditModeView: View {
         }
     }
 
-    // MARK: - Left: jog wheel panel
+    // MARK: - Left: jog wheel panel (mock: plain dark wheel, no accent)
 
     private var wheelPanel: some View {
-        PadPanel(title: "JOG WHEEL") {
-            VStack(spacing: 12) {
+        PadPanel(title: "JOG WHEEL", centered: true) {
+            VStack(spacing: 14) {
                 speedRow
 
-                ZStack {
-                    Circle()
-                        .fill(Theme.editAccent)
-                        .blur(radius: 80)
-                        .opacity(0.05)
-                        .scaleEffect(1.25)
-
-                    DialView(
-                        mode: wheelMode,
-                        speed: speed,
-                        accent: Theme.editAccent,
-                        onTicks: { ticks in
-                            connection.send(cmd: CommandName.jog, ticks: ticks)
-                        },
-                        onShuttle: { level in
-                            connection.send(cmd: CommandName.shuttle, level: level)
-                        }
-                    )
-                    .frame(maxWidth: 430, maxHeight: 430)
-                    .opacity(connection.isConnected ? 1 : 0.55)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                DialView(
+                    mode: wheelMode,
+                    speed: speed,
+                    accent: Color(white: 0.32), // subtle hardware bezel, mock-style
+                    onTicks: { ticks in
+                        connection.send(cmd: CommandName.jog, ticks: ticks)
+                    },
+                    onShuttle: { level in
+                        connection.send(cmd: CommandName.shuttle, level: level)
+                    }
+                )
+                .frame(width: 310, height: 310)
+                .opacity(connection.isConnected ? 1 : 0.55)
 
                 ModeSelector(selection: $wheelMode)
-                    .frame(maxWidth: 380)
+
+                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -84,22 +77,21 @@ struct iPadEditModeView: View {
                 .foregroundColor(Theme.textSecondary)
                 .frame(width: 36, alignment: .trailing)
         }
-        .frame(maxWidth: 430)
     }
 
-    // MARK: - Right: transport + shortcuts
+    // MARK: - Right: transport + shortcuts (mock: the wide column)
 
     private var rightColumn: some View {
         VStack(spacing: 12) {
-            PadPanel(title: "TRANSPORT") {
+            PadPanel(title: "TRANSPORT", centered: true) {
                 PadTransportRow(send: sendCommand)
             }
 
-            PadPanel(title: "EDIT SHORTCUTS") {
-                ShortcutGrid(send: sendCommand)
+            PadPanel(title: "EDIT SHORTCUTS", centered: true) {
+                PadShortcutGrid(send: sendCommand)
             }
 
-            Spacer()
+            Spacer(minLength: 0)
         }
     }
 

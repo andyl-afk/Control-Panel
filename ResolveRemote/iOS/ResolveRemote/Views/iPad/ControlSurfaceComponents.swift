@@ -147,11 +147,13 @@ struct ControlSurfaceButton: View {
 /// surface with a hairline border.
 struct PadPanel<Content: View>: View {
     let title: String
+    var centered: Bool = false
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: centered ? .center : .leading, spacing: 10) {
             TrackedLabel(text: title, size: 9)
+                .frame(maxWidth: centered ? .infinity : nil, alignment: .center)
             content
         }
         .padding(12)
@@ -177,24 +179,74 @@ struct PadTransportRow: View {
     ]
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
+            ForEach(items, id: \.cmd) { item in
+                VStack(spacing: 6) {
+                    Button {
+                        send(item.cmd)
+                    } label: {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 19))
+                            .foregroundColor(item.prominent ? Theme.colorAccent : Theme.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(item.prominent
+                                        ? Theme.colorAccent.opacity(0.22)
+                                        : Theme.surfaceRaised)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(item.prominent
+                                              ? Theme.colorAccent.opacity(0.5)
+                                              : Theme.stroke, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+
+                    TrackedLabel(text: item.label, size: 7)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+
+/// iPad-sized edit shortcut grid: big mock-style tiles with full labels.
+/// (The iPhone keeps the compact shared ShortcutGrid.) Sends the same
+/// existing keyboard-path commands.
+struct PadShortcutGrid: View {
+    var send: (String) -> Void
+
+    private let items: [(label: String, icon: String, cmd: String)] = [
+        ("BLADE", "scissors", CommandName.blade),
+        ("RIPPLE DELETE", "delete.backward", CommandName.rippleDelete),
+        ("MARKER", "bookmark.fill", CommandName.marker),
+        ("UNDO", "arrow.uturn.backward", CommandName.undo),
+        ("IN", "arrow.right.to.line", CommandName.inPoint),
+        ("OUT", "arrow.left.to.line", CommandName.outPoint),
+        ("PREV EDIT", "backward.end", CommandName.prevEdit),
+        ("NEXT EDIT", "forward.end", CommandName.nextEdit),
+    ]
+
+    var body: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
+        LazyVGrid(columns: columns, spacing: 10) {
             ForEach(items, id: \.cmd) { item in
                 Button {
                     send(item.cmd)
                 } label: {
-                    VStack(spacing: 5) {
+                    VStack(spacing: 9) {
                         Image(systemName: item.icon)
-                            .font(.system(size: 17))
-                        TrackedLabel(
-                            text: item.label,
-                            size: 7,
-                            color: item.prominent ? .black : Theme.textSecondary
-                        )
+                            .font(.system(size: 20))
+                            .foregroundColor(Theme.textPrimary)
+                        TrackedLabel(text: item.label, size: 8)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.7)
                     }
-                    .foregroundColor(item.prominent ? .black : Theme.textPrimary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 58)
-                    .background(item.prominent ? Theme.colorAccent : Theme.surfaceRaised)
+                    .frame(height: 96)
+                    .background(Theme.surfaceRaised)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke, lineWidth: 1))
                 }
