@@ -113,7 +113,7 @@ struct DialView: View {
             ? AnyShapeStyle(AngularGradient(
                 colors: [.red, .yellow, .green, .cyan, .blue, Color(red: 0.85, green: 0.27, blue: 0.94), .red],
                 center: .center,
-                angle: .degrees(-90)
+                angle: .degrees(-135)
               ))
             : AnyShapeStyle(LinearGradient(
                 colors: [accent, accentSecondary ?? accent],
@@ -161,35 +161,35 @@ struct DialView: View {
                     )
                 )
 
-            // 2. Recessed track: a blurred dark ring so the ticks sit in a
-            //    machined groove.
-            Circle()
-                .stroke(Color.black.opacity(0.5), lineWidth: size * 0.075)
-                .blur(radius: size * 0.012)
-                .padding(size * 0.035)
+            // 2+3. Groove and tick ring — hidden on the hue-ring grading
+            //      wheel (the mockup's colour wheel is smooth).
+            if !ringHue {
+                Circle()
+                    .stroke(Color.black.opacity(0.5), lineWidth: size * 0.075)
+                    .blur(radius: size * 0.012)
+                    .padding(size * 0.035)
 
-            // 3. Ticks: cardinals longer; all fade from 30% white at the
-            //    accent-ring end to 18% at the outer end.
-            ForEach(0..<tickCount, id: \.self) { i in
-                let isCardinal = i % (tickCount / 4) == 0
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.18), Color.white.opacity(0.30)],
-                            startPoint: .top,
-                            endPoint: .bottom
+                ForEach(0..<tickCount, id: \.self) { i in
+                    let isCardinal = i % (tickCount / 4) == 0
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.18), Color.white.opacity(0.30)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         )
-                    )
-                    .frame(width: size * 0.012 + 1, height: size * (isCardinal ? 0.07 : 0.045))
-                    .offset(y: -size * (isCardinal ? 0.44 : 0.4525))
-                    .rotationEffect(.degrees(Double(i) / Double(tickCount) * 360))
+                        .frame(width: size * 0.012 + 1, height: size * (isCardinal ? 0.07 : 0.045))
+                        .offset(y: -size * (isCardinal ? 0.44 : 0.4525))
+                        .rotationEffect(.degrees(Double(i) / Double(tickCount) * 360))
+                }
             }
 
             // 4. Accent ring: tight bright stroke + wide soft glow, both
             //    lifted ~20% while the dial is touched.
             Circle()
-                .strokeBorder(ringStyle, lineWidth: isLarge ? 2 : 2.5)
-                .padding(size * (isLarge ? 0.09 : 0.045))
+                .strokeBorder(ringStyle, lineWidth: ringHue ? 3 : (isLarge ? 2 : 2.5))
+                .padding(size * (ringHue ? 0.02 : (isLarge ? 0.09 : 0.045)))
                 .brightness(touched ? 0.12 : 0)
                 .shadow(
                     color: accent.opacity(touched ? 0.5 : 0.35),
@@ -280,7 +280,7 @@ struct DialView: View {
             Circle()
                 .fill(dotColor)
                 .frame(width: size * 0.035 + 2, height: size * 0.035 + 2)
-                .offset(y: -size * (isLarge ? 0.405 : 0.455))
+                .offset(y: -size * (ringHue ? 0.472 : (isLarge ? 0.405 : 0.455)))
                 .shadow(color: (ringHue ? dotColor : accent).opacity(touched ? 1.0 : 0.8), radius: 3)
         }
     }

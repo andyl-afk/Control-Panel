@@ -69,7 +69,7 @@ struct PrimaryColourWheelView: View {
                     onBalance: balanceHandler,
                     onBalanceDoubleTap: balanceDoubleTapHandler
                 )
-                .frame(maxWidth: 440, maxHeight: 440)
+                .frame(width: 340, height: 340)
                 .opacity(isLive ? 1 : 0.4)
                 .disabled(!isLive)
 
@@ -77,7 +77,7 @@ struct PrimaryColourWheelView: View {
                     gateOverlay
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity) // hug the wheel; centred, mock-compact
             .overlay(alignment: .topTrailing) {
                 resetButton // circular reset beside the wheel, mock-style
             }

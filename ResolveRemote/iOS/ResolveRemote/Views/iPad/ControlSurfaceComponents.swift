@@ -42,6 +42,8 @@ struct CapabilityBadge: View {
         Text(badge.label)
             .font(.system(size: 7, weight: .bold))
             .tracking(1)
+            .lineLimit(1)
+            .fixedSize() // never letter-wrap inside narrow tiles
             .foregroundColor(badge.color)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)

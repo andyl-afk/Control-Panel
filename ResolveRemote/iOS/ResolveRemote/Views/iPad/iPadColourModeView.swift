@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// iPad Colour mode, arranged like the mockup: PRIMARY wheel panel on the
-/// left (LIFT/GAMMA/GAIN selector), ADJUSTMENTS all-knob grid, NODE & CLIP
-/// action row with overflow, TOOLBOX chips, and the wired LOOKS strip.
-/// Only proven commands execute; everything else is badged and inert
-/// (local toast, nothing sent) — Phase 12's honesty rules unchanged.
+/// iPad Colour mode, arranged like the mockup: compact PRIMARY wheel panel
+/// (LIFT/GAMMA/GAIN selector + speed chip), ADJUSTMENTS all-knob grid with
+/// labels above the knobs, mock-style NODE & CLIP tiles, and full-width
+/// TOOLBOX + LOOKS strips along the bottom. Only proven commands execute;
+/// everything else is inert with a tiny status dot and a local toast —
+/// Phase 12's honesty rules unchanged.
 struct iPadColourModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
     var onBlocked: (String) -> Void
@@ -23,12 +24,23 @@ struct iPadColourModeView: View {
     private var isLive: Bool { cdlStatus == .supported && colorState?.available == true }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            primaryPanel
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                primaryPanel
+                    .frame(width: 470)
 
-            rightColumn
-                .frame(width: 430)
+                rightColumn
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+
+            PadPanel(title: "TOOLBOX") {
+                toolboxChips
+            }
+
+            PadPanel(title: "LOOKS (DRX)") {
+                looksStrip
+            }
         }
         .onAppear {
             requestStatus()
@@ -56,16 +68,20 @@ struct iPadColourModeView: View {
     private var primaryPanel: some View {
         PadPanel(title: "PRIMARY") {
             VStack(spacing: 12) {
-                targetSelector
-
-                speedRow
+                HStack(spacing: 8) {
+                    targetSelector
+                    speedChip
+                }
 
                 PrimaryColourWheelView(target: target, speed: speed, cdlStatus: cdlStatus)
+
+                Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
+    /// Mock-style: the selected segment is always the green accent.
     private var targetSelector: some View {
         HStack(spacing: 8) {
             ForEach(wheelTargets, id: \.self) { candidate in
@@ -81,107 +97,103 @@ struct iPadColourModeView: View {
                         color: target == candidate ? .black : Theme.textSecondary
                     )
                     .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                    .background(target == candidate ? candidate.accent : Theme.surfaceRaised)
+                    .frame(height: 34)
+                    .background(target == candidate ? Theme.colorAccent : Theme.surfaceRaised)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .frame(maxWidth: 420)
     }
 
-    private var speedRow: some View {
-        HStack(spacing: 8) {
-            TrackedLabel(text: "SPEED", size: 9)
-            Slider(value: $speed, in: 0.25...3.0)
-                .tint(Theme.colorAccent)
+    /// Compact speed multiplier: tap cycles 0.5x → 1.0x → 2.0x (the mock has
+    /// no slider in the colour module).
+    private var speedChip: some View {
+        Button {
+            HapticsEngine.shared.buttonTap()
+            switch speed {
+            case 0.5:  speed = 1.0
+            case 1.0:  speed = 2.0
+            default:   speed = 0.5
+            }
+        } label: {
             Text(String(format: "%.1fx", speed))
-                .font(.caption2.monospacedDigit())
-                .foregroundColor(Theme.textSecondary)
-                .frame(width: 32, alignment: .trailing)
+                .font(.caption2.bold().monospacedDigit())
+                .foregroundColor(Theme.colorAccent)
+                .frame(width: 52, height: 34)
+                .background(Theme.surfaceRaised)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.stroke, lineWidth: 1))
         }
-        .frame(maxWidth: 420)
+        .buttonStyle(.plain)
     }
 
     // MARK: - Right column
 
     private var rightColumn: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 12) {
-                PadPanel(title: "ADJUSTMENTS") {
-                    adjustmentsGrid
-                }
+        VStack(spacing: 12) {
+            PadPanel(title: "ADJUSTMENTS") {
+                adjustmentsGrid
+            }
 
-                PadPanel(title: "NODE & CLIP") {
-                    nodeStepper
-                    nodeClipRow
-                    if showOverflow {
-                        overflowRow
-                    }
-                }
-
-                PadPanel(title: "TOOLBOX") {
-                    toolboxChips
-                }
-
-                PadPanel(title: "LOOKS (DRX)") {
-                    looksStrip
+            PadPanel(title: "NODE & CLIP") {
+                nodeStepper
+                nodeClipRow
+                if showOverflow {
+                    overflowRow
                 }
             }
-            .padding(.bottom, 12)
+
+            Spacer(minLength: 0)
         }
     }
 
-    // MARK: Adjustments — full 2×4 knob grid (mock geometry, honest gating)
+    // MARK: Adjustments — mock 2×4 grid, labels above the knobs
 
     private var adjustmentsGrid: some View {
-        VStack(spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                knob("CONTRAST", param: "contrast", value: colorState?.contrast, accent: Theme.knobNeutral)
-                knob("PIVOT", param: "pivot", value: colorState?.pivot, accent: Theme.knobNeutral)
-                knob("SATURATION", param: "sat", value: colorState?.sat, accent: Theme.gamma)
-                inertKnob(
-                    "BALANCE",
-                    accent: Theme.gamma,
-                    badge: .supported,
-                    note: "on wheel cap",
-                    message: "Balance — drag the wheel cap trackball"
-                )
-            }
-            HStack(alignment: .top, spacing: 12) {
-                knob("TEMP", param: "temp", value: colorState?.temp,
-                     accent: Theme.tempCool, accentSecondary: Theme.tempWarm, subtitle: "CDL approx")
-                knob("TINT", param: "tint", value: colorState?.tint,
-                     accent: Theme.tintAccent, subtitle: "CDL approx")
-                inertKnob(
-                    "MID DETAIL",
-                    accent: Theme.knobNeutral,
-                    badge: .unsupported,
-                    note: "no scripting API",
-                    message: "Mid Detail — Resolve's API can't reach it"
-                )
-                inertKnob(
-                    "HIGHLIGHT",
-                    accent: Theme.knobNeutral,
-                    badge: .unsupported,
-                    note: "no scripting API",
-                    message: "Highlight — Resolve's API can't reach it"
-                )
-            }
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 16), count: 4)
+        return LazyVGrid(columns: columns, spacing: 18) {
+            knob("CONTRAST", param: "contrast", value: colorState?.contrast, accent: Theme.knobNeutral)
+            knob("PIVOT", param: "pivot", value: colorState?.pivot, accent: Theme.knobNeutral)
+            knob("SATURATION", param: "sat", value: colorState?.sat, accent: Theme.gamma)
+            inertKnob(
+                "BALANCE",
+                accent: Theme.gamma,
+                note: "on wheel cap",
+                message: "Balance — drag the wheel cap trackball"
+            )
+            knob("TEMP", param: "temp", value: colorState?.temp,
+                 accent: Theme.tempCool, accentSecondary: Theme.tempWarm, note: "CDL approx")
+            knob("TINT", param: "tint", value: colorState?.tint,
+                 accent: Theme.tintAccent, note: "CDL approx")
+            inertKnob(
+                "MID DETAIL",
+                accent: Theme.knobNeutral,
+                note: "no scripting API",
+                message: "Mid Detail — Resolve's API can't reach it"
+            )
+            inertKnob(
+                "HIGHLIGHT",
+                accent: Theme.knobNeutral,
+                note: "no scripting API",
+                message: "Highlight — Resolve's API can't reach it"
+            )
         }
     }
 
-    /// A wired knob riding the existing param_delta path.
+    /// A wired knob riding the existing param_delta path. Label above the
+    /// knob, mock-style; double-tap resets the parameter.
     private func knob(
         _ label: String,
         param: String,
         value: Double?,
         accent: Color,
         accentSecondary: Color? = nil,
-        subtitle: String? = nil
+        note: String? = nil
     ) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
+            knobLabel(label)
+
             DialView(
                 style: .vertical,
                 accent: accent,
@@ -200,17 +212,9 @@ struct iPadColourModeView: View {
                     connection.send(cmd: CommandName.colorReset, mode: "color", target: param)
                 }
             )
-            .frame(width: 62, height: 62)
+            .frame(width: 84, height: 84)
 
-            TrackedLabel(text: label, size: 8)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.system(size: 8))
-                    .foregroundColor(Theme.textSecondary)
-            }
-            Text(value.map { String(format: "%.2f", $0) } ?? "—")
-                .font(.system(size: 10).monospacedDigit())
-                .foregroundColor(Theme.textPrimary)
+            knobFooter(value: value.map { String(format: "%.2f", $0) } ?? "—", note: note)
         }
         .frame(maxWidth: .infinity)
         .opacity(isLive ? 1 : 0.4)
@@ -222,28 +226,45 @@ struct iPadColourModeView: View {
     private func inertKnob(
         _ label: String,
         accent: Color,
-        badge: SurfaceBadge,
         note: String,
         message: String
     ) -> some View {
-        VStack(spacing: 4) {
-            DialView(style: .vertical, accent: accent, onTicks: { _ in })
-                .frame(width: 62, height: 62)
-                .disabled(true)
-                .opacity(0.4)
+        VStack(spacing: 6) {
+            knobLabel(label)
 
-            TrackedLabel(text: label, size: 8)
-            Text(note)
-                .font(.system(size: 8))
-                .foregroundColor(Theme.textSecondary)
-            CapabilityBadge(badge: badge)
+            DialView(style: .vertical, accent: accent, onTicks: { _ in })
+                .frame(width: 84, height: 84)
+                .disabled(true)
+                .opacity(0.35)
+
+            knobFooter(value: "—", note: note)
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .onTapGesture { onBlocked(message) }
     }
 
-    // MARK: Node & clip (mock order, wired where proven)
+    private func knobLabel(_ label: String) -> some View {
+        TrackedLabel(text: label, size: 9, color: Theme.textPrimary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+    }
+
+    private func knobFooter(value: String, note: String?) -> some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundColor(Theme.textPrimary)
+            if let note {
+                Text(note)
+                    .font(.system(size: 8))
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    // MARK: Node & clip — mock-style two-line tiles with status dots
 
     private var activeNode: Int { colorState?.node ?? 1 }
     private var nodeCount: Int { colorState?.node_count ?? 1 }
@@ -290,52 +311,119 @@ struct iPadColourModeView: View {
 
     private var nodeClipRow: some View {
         HStack(spacing: 8) {
-            ControlSurfaceButton(title: "Prev Clip", icon: "backward.end",
-                                 status: .missing, wired: false, onBlocked: onBlocked)
-            ControlSurfaceButton(title: "Next Clip", icon: "forward.end",
-                                 status: .missing, wired: false, onBlocked: onBlocked)
-            ControlSurfaceButton(title: "Add Node", icon: "plus.circle",
-                                 status: caps.status(for: "node_graph"),
-                                 wired: false, onBlocked: onBlocked)
+            nodeTile("PREV", "CLIP", status: .missing, wired: false,
+                     blocked: "Prev Clip — not wired yet")
+            nodeTile("NEXT", "CLIP", status: .missing, wired: false,
+                     blocked: "Next Clip — not wired yet")
+            nodeTile("ADD", "NODE", status: caps.status(for: "node_graph"), wired: false,
+                     blocked: "Add Node — not wired yet")
             bypassTile
-            ControlSurfaceButton(
-                title: "Reset Node",
-                subtitle: "app trims only",
-                icon: "arrow.counterclockwise",
-                status: cdlStatus,
-                wired: true,
-                action: {
-                    HapticsEngine.shared.heavyBump()
-                    connection.send(cmd: CommandName.colorReset, mode: "color", target: "all")
-                },
-                onBlocked: onBlocked
+            nodeTile("RESET", "NODE", status: cdlStatus, wired: true,
+                     blocked: "Reset Node — colour unavailable",
+                     action: {
+                         HapticsEngine.shared.heavyBump()
+                         connection.send(cmd: CommandName.colorReset, mode: "color", target: "all")
+                     })
+            moreTile
+        }
+    }
+
+    private var overflowRow: some View {
+        HStack(spacing: 8) {
+            nodeTile("GRAB", "STILL", status: caps.status(for: "grab_still"), wired: true,
+                     blocked: "Grab Still — capability unknown (probe Resolve)",
+                     action: { connection.send(cmd: CommandName.grabStill, mode: "color") })
+            nodeTile("SET", "LUT", status: caps.status(for: "set_lut"), wired: false,
+                     blocked: "Set LUT — not wired yet")
+            nodeTile("MAGIC", "MASK", status: caps.status(for: "magic_mask"), wired: false,
+                     blocked: "Magic Mask — not wired yet")
+            nodeTile("SMART", "REFRAME", status: caps.status(for: "smart_reframe"), wired: false,
+                     blocked: "Smart Reframe — not wired yet")
+            nodeTile("RESET", "GRADE", status: caps.status(for: "reset_grades"), wired: false,
+                     blocked: "Reset Grade — dangerous, not wired", dangerous: true)
+        }
+    }
+
+    /// Mock-style tile: two stacked uppercase lines, tiny status dot in the
+    /// corner. Executes only when wired + supported + colour live; every
+    /// other tap raises the local toast.
+    private func nodeTile(
+        _ line1: String,
+        _ line2: String,
+        status: FeatureStatus,
+        wired: Bool,
+        blocked: String,
+        dangerous: Bool = false,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        let live = wired && status == .supported && isLive
+        return Button {
+            if live, let action {
+                HapticsEngine.shared.buttonTap()
+                action()
+            } else {
+                onBlocked(blocked)
+            }
+        } label: {
+            VStack(spacing: 2) {
+                tileLine(line1, live: live)
+                tileLine(line2, live: live)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 56)
+            .background(Theme.surfaceRaised.opacity(live ? 1 : 0.6))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(dangerous ? Theme.lift.opacity(0.45) : Theme.stroke, lineWidth: 1)
             )
-            moreButton
+            .overlay(alignment: .topTrailing) {
+                Circle()
+                    .fill(statusDot(status, wired: wired))
+                    .frame(width: 5, height: 5)
+                    .padding(6)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tileLine(_ text: String, live: Bool) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.5)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundColor(live ? Theme.textPrimary : Theme.textSecondary)
+    }
+
+    /// Honesty, condensed: green = probed supported (and wired), orange =
+    /// unknown/not probed, red = unsupported/error, grey = not wired.
+    private func statusDot(_ status: FeatureStatus, wired: Bool) -> Color {
+        guard wired else { return Theme.textSecondary.opacity(0.5) }
+        switch status {
+        case .supported:         return Color(red: 0.4, green: 0.85, blue: 0.5)
+        case .unknown, .missing: return .orange
+        case .unsupported, .error: return Theme.lift
         }
     }
 
     /// BYPASS GRADE — the existing wired hold-to-compare, as a mock tile.
     private var bypassTile: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
-                Image(systemName: "eye.slash")
-                    .font(.system(size: 11))
-                Text("Bypass Grade")
-                    .font(.footnote.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .foregroundColor(comparing ? .black : (isLive ? Theme.textPrimary : Theme.textSecondary))
-            Text("hold to compare")
-                .font(.system(size: 9))
-                .foregroundColor(comparing ? .black : Theme.textSecondary)
-            CapabilityBadge(badge: isLive ? .supported : .experimental)
+        VStack(spacing: 2) {
+            bypassLine("BYPASS")
+            bypassLine("GRADE")
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
-        .background(comparing ? Theme.colorAccent : Theme.surface.opacity(isLive ? 1 : 0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke, lineWidth: 1))
+        .frame(maxWidth: .infinity)
+        .frame(height: 56)
+        .background(comparing ? Theme.colorAccent : Theme.surfaceRaised.opacity(isLive ? 1 : 0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke, lineWidth: 1))
+        .overlay(alignment: .topTrailing) {
+            Circle()
+                .fill(statusDot(isLive ? .supported : .missing, wired: true))
+                .frame(width: 5, height: 5)
+                .padding(6)
+        }
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
@@ -353,7 +441,16 @@ struct iPadColourModeView: View {
         )
     }
 
-    private var moreButton: some View {
+    private func bypassLine(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.5)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundColor(comparing ? .black : (isLive ? Theme.textPrimary : Theme.textSecondary))
+    }
+
+    private var moreTile: some View {
         Button {
             HapticsEngine.shared.buttonTap()
             withAnimation(.easeInOut(duration: 0.15)) { showOverflow.toggle() }
@@ -361,41 +458,15 @@ struct iPadColourModeView: View {
             Text("…")
                 .font(.title3.weight(.semibold))
                 .foregroundColor(Theme.textPrimary)
-                .frame(width: 44, minHeight: 64)
-                .background(Theme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.stroke, lineWidth: 1))
+                .frame(width: 48, height: 56)
+                .background(Theme.surfaceRaised)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
 
-    private var overflowRow: some View {
-        HStack(spacing: 8) {
-            ControlSurfaceButton(
-                title: "Grab Still",
-                icon: "camera.fill",
-                status: caps.status(for: "grab_still"),
-                wired: true,
-                action: { connection.send(cmd: CommandName.grabStill, mode: "color") },
-                onBlocked: onBlocked
-            )
-            ControlSurfaceButton(title: "Set LUT", icon: "square.3.layers.3d",
-                                 status: caps.status(for: "set_lut"),
-                                 wired: false, onBlocked: onBlocked)
-            ControlSurfaceButton(title: "Magic Mask", icon: "person.crop.rectangle",
-                                 status: caps.status(for: "magic_mask"),
-                                 wired: false, onBlocked: onBlocked)
-            ControlSurfaceButton(title: "Smart Reframe", icon: "aspectratio",
-                                 status: caps.status(for: "smart_reframe"),
-                                 wired: false, onBlocked: onBlocked)
-            ControlSurfaceButton(title: "Reset Grade", subtitle: "full node grade",
-                                 icon: "exclamationmark.arrow.circlepath",
-                                 status: caps.status(for: "reset_grades"),
-                                 wired: false, dangerous: true, onBlocked: onBlocked)
-        }
-    }
-
-    // MARK: Toolbox — compact chips (all inert placeholders)
+    // MARK: Toolbox — full-width chip strip (all inert placeholders)
 
     private var toolboxChips: some View {
         HStack(spacing: 8) {
@@ -413,9 +484,11 @@ struct iPadColourModeView: View {
     private func toolChip(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             TrackedLabel(text: title, size: 8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .padding(.horizontal, 12)
-                .frame(height: 34)
                 .frame(maxWidth: .infinity)
+                .frame(height: 36)
                 .background(Theme.surfaceRaised)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.stroke, lineWidth: 1))
