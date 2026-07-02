@@ -199,6 +199,37 @@ connect, so the dashboard gates correctly without manual probing. The iPad
 UI exposes only proven or explicitly experimental controls — never fake
 support.
 
+## Colour action smoke tests (Phase 14)
+
+Settings → Diagnostics → Colour smoke tests proves the full round trip
+(app → helper → sidecar → Resolve → broadcast → app) with visible JSON.
+
+New `mode:"color"` commands (all reply with one
+`{"type":"color_action_result","cmd":…,"ok":…,"message"/"reason"/"details"}`
+line, broadcast to all clients):
+
+- `reset_grade` — Resolve's ResetAllGrades on the current clip.
+  **DESTRUCTIVE**: requires `"confirm": true`, otherwise the sidecar replies
+  `{"type":"command_rejected","reason":"confirmation_required"}`. On success
+  the app's shadow trims for the clip are purged and a forced color_state is
+  broadcast.
+- `set_lut` — requires `lut_path` (absolute paths are checked with isfile;
+  relative names are attempted as Resolve-LUT-dir references). `node_index`
+  defaults to the stepper-selected active node. Never picks a default LUT.
+- `apply_drx` — requires an existing `drx_path`; shares the exact code path
+  of the Looks presets (including the ApplyGradeFromDRX graph-re-fetch crash
+  workaround and the trim purge). Never picks a default file.
+
+Deliberately NOT duplicated: CDL nudges, colour context, targeted resets,
+and Grab Still are already proven production commands (`color_delta`,
+`param_delta`, `color_status`, `color_reset`, `grab_still`) — the smoke
+panel sends those directly. Magic Mask / Smart Reframe remain status-only
+(capability probe); they are never executed.
+
+Safety rules: destructive/expensive actions need explicit confirmation
+fields; path-taking actions need explicit paths; a probe saying "supported"
+means *available*, not automatically *safe production behaviour*.
+
 ## Finding the Mac's IP (manual fallback)
 
 The helper menu shows it; or `ipconfig getifaddr en0`; or System

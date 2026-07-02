@@ -23,6 +23,7 @@ struct SettingsView: View {
     @AppStorage("wheelTextureEnabled") private var wheelTextureEnabled = true
     @FocusState private var focusedField: Field?
     @State private var showCapabilities = false
+    @State private var showSmokeTests = false
 
     var body: some View {
         ZStack {
@@ -166,6 +167,21 @@ struct SettingsView: View {
                         }
                     }
                     .buttonStyle(.plain)
+
+                    Button {
+                        showSmokeTests = true
+                    } label: {
+                        HStack {
+                            Text("Colour smoke tests")
+                                .font(.footnote)
+                                .foregroundColor(Theme.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 section("ABOUT") {
@@ -197,6 +213,10 @@ struct SettingsView: View {
         .onDisappear { browser.release("settings") }
         .sheet(isPresented: $showCapabilities) {
             CapabilityProbeView()
+                .environmentObject(connection)
+        }
+        .sheet(isPresented: $showSmokeTests) {
+            ColorSmokeTestView()
                 .environmentObject(connection)
         }
     }

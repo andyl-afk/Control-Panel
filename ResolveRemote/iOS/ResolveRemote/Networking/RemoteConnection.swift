@@ -42,6 +42,9 @@ final class RemoteConnection: ObservableObject {
     /// One-shot results; each reply gets a fresh id so onChange always fires.
     @Published private(set) var presetResult: PresetResult?
     @Published private(set) var stillResult: StillResult?
+    /// Phase 14 smoke tests: last result and a rolling log (newest first).
+    @Published private(set) var lastColorActionResult: ColorActionResult?
+    @Published private(set) var colorActionLog: [ColorActionResult] = []
     /// Round-trip latency in milliseconds (nil until the first pong).
     @Published private(set) var latencyMs: Int?
     /// Latest Resolve capability probe result (Phase 11) and its raw JSON.
@@ -135,7 +138,10 @@ final class RemoteConnection: ObservableObject {
         name: String? = nil,
         dx: Double? = nil,
         dy: Double? = nil,
-        index: Int? = nil
+        index: Int? = nil,
+        confirm: Bool? = nil,
+        lutPath: String? = nil,
+        drxPath: String? = nil
     ) {
         guard isConnected, let connection else { return }
 
@@ -156,6 +162,9 @@ final class RemoteConnection: ObservableObject {
             dx: dx,
             dy: dy,
             index: index,
+            confirm: confirm,
+            lut_path: lutPath,
+            drx_path: drxPath,
             ts: Date().timeIntervalSince1970
         )
 
@@ -305,6 +314,7 @@ final class RemoteConnection: ObservableObject {
         let name: String?
         let ok: Bool?
         let reason: String?
+        let message: String?
         let ts: Double?
     }
 
@@ -338,6 +348,25 @@ final class RemoteConnection: ObservableObject {
                 self.capabilityState = caps
                 self.capabilityJSON = json
                 self.capabilityReceivedAt = Date()
+            }
+        case "color_action_result", "command_rejected":
+            let isRejection = (reply.type ?? reply.cmd) == "command_rejected"
+            let result = ColorActionResult(
+                id: UUID(),
+                cmd: reply.cmd ?? "?",
+                ok: reply.ok ?? false,
+                rejected: isRejection,
+                message: reply.message,
+                reason: reply.reason,
+                json: String(data: lineData, encoding: .utf8) ?? "",
+                receivedAt: Date()
+            )
+            DispatchQueue.main.async {
+                self.lastColorActionResult = result
+                self.colorActionLog.insert(result, at: 0)
+                if self.colorActionLog.count > 50 {
+                    self.colorActionLog.removeLast(self.colorActionLog.count - 50)
+                }
             }
         case "pong":
             // handleLine runs on `queue`, so this is safe to touch directly.

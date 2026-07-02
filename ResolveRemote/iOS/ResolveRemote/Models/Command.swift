@@ -21,6 +21,10 @@ struct Command: Encodable {
     let dx: Double?
     let dy: Double?
     let index: Int?
+    // Phase 14 smoke tests
+    let confirm: Bool?
+    let lut_path: String?
+    let drx_path: String?
     let ts: Double
 }
 
@@ -62,6 +66,20 @@ struct PresetResult: Equatable {
 struct StillResult: Equatable {
     let id: UUID
     let ok: Bool
+}
+
+/// Phase 14 — one colour smoke-test outcome (color_action_result) or a
+/// guarded-command refusal (command_rejected). `json` keeps the raw line so
+/// it can be inspected/copied verbatim.
+struct ColorActionResult: Identifiable, Equatable {
+    let id: UUID
+    let cmd: String
+    let ok: Bool
+    let rejected: Bool
+    let message: String?
+    let reason: String?
+    let json: String
+    let receivedAt: Date
 }
 
 /// Phase 11 — the Resolve capability probe result. Every field is optional so
@@ -142,6 +160,9 @@ enum CommandName {
     static let listPresets = "list_presets"
     static let applyPreset = "apply_preset"
     static let grabStill = "grab_still"
+    static let resetGrade = "reset_grade"
+    static let setLUT = "set_lut"
+    static let applyDRX = "apply_drx"
 
     // System mode (mode: "system")
     static let capabilityProbe = "capability_probe"

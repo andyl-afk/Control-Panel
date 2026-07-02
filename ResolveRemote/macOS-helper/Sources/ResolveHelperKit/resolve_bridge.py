@@ -267,6 +267,26 @@ def emit(obj):
     sys.stdout.flush()
 
 
+def emit_color_result(cmd, ok, message=None, reason=None, details=None):
+    """Phase 14 smoke-test reply: one color_action_result line."""
+    payload = {"v": 1, "type": "color_action_result", "cmd": cmd, "ok": bool(ok)}
+    if message is not None:
+        payload["message"] = message
+    if reason is not None:
+        payload["reason"] = reason
+    if details is not None:
+        payload["details"] = details
+    emit(payload)
+
+
+def emit_command_rejected(cmd, reason, message=None):
+    """A guarded command was refused (e.g. destructive without confirm)."""
+    payload = {"v": 1, "type": "command_rejected", "cmd": cmd, "reason": reason}
+    if message is not None:
+        payload["message"] = message
+    emit(payload)
+
+
 def log(message):
     sys.stderr.write(message + "\n")
     sys.stderr.flush()
@@ -551,6 +571,10 @@ class ColorEngine:
                               "name": cmd.get("name") or "?", "ok": False, "reason": reason})
                     elif cmd.get("cmd") == "grab_still":
                         emit({"v": 1, "cmd": "still_grabbed", "ok": False})
+                    elif cmd.get("cmd") in ("reset_grade", "set_lut", "apply_drx"):
+                        # Smoke-test actions always get an explicit answer.
+                        emit_color_result(cmd.get("cmd"), False,
+                                          reason="no_color_context", message=reason)
             self.announce(False, reason=reason, force=wants_status)
             return
 
@@ -629,6 +653,17 @@ class ColorEngine:
                     changed = False
             elif name == "grab_still":
                 self.grab_still(timeline)
+            elif name == "reset_grade":
+                if self.reset_grade(item, cmd):
+                    # The whole grade is gone; earlier deltas are obsolete.
+                    state = self.state_for(item)
+                    changed = False
+            elif name == "set_lut":
+                self.set_lut(item, cmd)
+            elif name == "apply_drx":
+                if self.apply_drx_command(item, cmd):
+                    state = self.state_for(item)
+                    changed = False
             else:
                 log("unknown colour command: %r" % name)
 
@@ -662,15 +697,11 @@ class ColorEngine:
             names = []
         emit({"v": 1, "cmd": "preset_list", "presets": names})
 
-    def apply_preset(self, item, name):
-        """Apply a .drx look to the current clip. Returns True when applied
-        (so the caller can refresh its shadow-state handle)."""
-        path = os.path.join(LOOKS_DIR, name + ".drx")
-        if not os.path.isfile(path):
-            emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
-                  "reason": "Preset file not found — refresh the list"})
-            return False
-
+    def _apply_drx_file(self, item, path):
+        """Shared DRX-application core (looks presets AND the smoke-test
+        apply_drx). Returns (ok, reason). On success the clip's shadow trims
+        are purged and a forced color_state is announced — the DRX can
+        rewrite the whole node tree."""
         # Same rule as wheel input: grading while bypassed is invisible.
         if self.bypassed_node is not None and self._set_node_enabled(item, self.bypassed_node, True):
             self.bypassed_node = None
@@ -678,9 +709,7 @@ class ColorEngine:
         try:
             graph = item.GetNodeGraph()
             if graph is None:
-                emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
-                      "reason": "Clip has no node graph"})
-                return False
+                return False, "Clip has no node graph"
             ok = bool(graph.ApplyGradeFromDRX(path, 0))  # 0 = no keyframes
             # WORKAROUND for a Resolve macOS API bug: a graph handle obtained
             # BEFORE ApplyGradeFromDRX can crash Resolve if used again
@@ -690,27 +719,146 @@ class ColorEngine:
             del graph
         except Exception as exc:
             log("ApplyGradeFromDRX failed: %s" % exc)
-            emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
-                  "reason": "Resolve error applying preset: %s" % exc})
-            return False
+            return False, "Resolve error applying DRX: %s" % exc
 
         if not ok:
-            emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
-                  "reason": "Resolve rejected the preset"})
-            return False
+            return False, "Resolve rejected the DRX"
 
-        # The DRX is now the base look and can rewrite the whole node tree:
-        # drop the shadow state for ALL of this clip's nodes (without calling
-        # SetCDL, which would stomp the look's own CDLs), re-read the node
-        # count, and tell the phone so its readouts zero out.
+        self._purge_clip_state(item)
+        return True, None
+
+    def _purge_clip_state(self, item):
+        """Drop the shadow trims for ALL of a clip's nodes (without calling
+        SetCDL) and tell the phone so its readouts zero out."""
         uid = item.GetUniqueId()
         self.states = {
             key: value for key, value in self.states.items() if key[0] != uid
         }
         self.announce(True, item=item, force=True)
+
+    def apply_preset(self, item, name):
+        """Apply a .drx look to the current clip. Returns True when applied
+        (so the caller can refresh its shadow-state handle)."""
+        path = os.path.join(LOOKS_DIR, name + ".drx")
+        if not os.path.isfile(path):
+            emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
+                  "reason": "Preset file not found — refresh the list"})
+            return False
+
+        ok, reason = self._apply_drx_file(item, path)
+        if not ok:
+            emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": False,
+                  "reason": reason})
+            return False
+
         emit({"v": 1, "cmd": "preset_applied", "name": name, "ok": True})
         log("applied preset %r" % name)
         return True
+
+    # -- colour action smoke tests (Phase 14) --------------------------------
+
+    def reset_grade(self, item, cmd):
+        """Resolve's real ResetAllGrades on the current clip. DESTRUCTIVE:
+        refuses without confirm:true. Returns True when the grade was reset
+        (caller re-points its shadow-state handle)."""
+        if cmd.get("confirm") is not True:
+            emit_command_rejected("reset_grade", "confirmation_required",
+                                  "Reset Grade requires confirm:true")
+            return False
+        try:
+            graph = item.GetNodeGraph()
+            if graph is None:
+                emit_color_result("reset_grade", False, reason="no_node_graph",
+                                  message="Clip has no node graph")
+                return False
+            reset = getattr(graph, "ResetAllGrades", None)
+            if not callable(reset):
+                emit_color_result("reset_grade", False, reason="api_unavailable",
+                                  message="ResetAllGrades is not exposed by this Resolve")
+                return False
+            ok = bool(reset())
+        except Exception as exc:
+            log("ResetAllGrades failed: %s" % exc)
+            emit_color_result("reset_grade", False, reason="resolve_error",
+                              message="Resolve error: %s" % exc)
+            return False
+
+        if not ok:
+            emit_color_result("reset_grade", False, reason="resolve_rejected",
+                              message="Resolve rejected ResetAllGrades")
+            return False
+
+        # The grade (and our trims on it) are gone.
+        self._purge_clip_state(item)
+        emit_color_result("reset_grade", True, message="All grades reset on current clip")
+        log("reset_grade: all grades reset")
+        return True
+
+    def set_lut(self, item, cmd):
+        """Apply a LUT to a node. Requires an explicit lut_path — never picks
+        a default. node_index defaults to the stepper-selected active node."""
+        lut_path = (cmd.get("lut_path") or "").strip()
+        if not lut_path:
+            emit_color_result("set_lut", False, reason="missing_path",
+                              message="set_lut requires a lut_path")
+            return
+        # Validate when we can: absolute paths must exist. Relative names may
+        # refer to Resolve's own LUT directory, so those are attempted as-is.
+        if os.path.isabs(lut_path) and not os.path.isfile(lut_path):
+            emit_color_result("set_lut", False, reason="invalid_path",
+                              message="No file at %s" % lut_path,
+                              details={"lut_path": lut_path})
+            return
+        node = cmd.get("node_index") or cmd.get("index") or self.active_node
+        try:
+            node = max(1, int(node))
+        except (TypeError, ValueError):
+            node = self.active_node
+        try:
+            graph = item.GetNodeGraph()
+            if graph is None:
+                emit_color_result("set_lut", False, reason="no_node_graph",
+                                  message="Clip has no node graph")
+                return
+            setter = getattr(graph, "SetLUT", None)
+            if not callable(setter):
+                emit_color_result("set_lut", False, reason="api_unavailable",
+                                  message="SetLUT is not exposed by this Resolve")
+                return
+            ok = bool(setter(node, lut_path))
+        except Exception as exc:
+            log("SetLUT failed: %s" % exc)
+            emit_color_result("set_lut", False, reason="resolve_error",
+                              message="Resolve error: %s" % exc,
+                              details={"node_index": node, "lut_path": lut_path})
+            return
+        emit_color_result("set_lut", ok,
+                          message="LUT applied to node %d" % node if ok
+                                  else "Resolve rejected the LUT",
+                          reason=None if ok else "resolve_rejected",
+                          details={"node_index": node, "lut_path": lut_path})
+        log("set_lut node=%d ok=%s" % (node, ok))
+
+    def apply_drx_command(self, item, cmd):
+        """Smoke-test DRX apply from an explicit path (the Looks strip stays
+        the everyday path). Never picks a default file."""
+        drx_path = (cmd.get("drx_path") or "").strip()
+        if not drx_path:
+            emit_color_result("apply_drx", False, reason="missing_path",
+                              message="apply_drx requires a drx_path")
+            return False
+        if not os.path.isfile(drx_path):
+            emit_color_result("apply_drx", False, reason="invalid_path",
+                              message="No file at %s" % drx_path,
+                              details={"drx_path": drx_path})
+            return False
+        ok, reason = self._apply_drx_file(item, drx_path)
+        emit_color_result("apply_drx", ok,
+                          message="DRX applied" if ok else reason,
+                          reason=None if ok else "resolve_rejected",
+                          details={"drx_path": drx_path})
+        log("apply_drx %s ok=%s" % (drx_path, ok))
+        return ok
 
     def grab_still(self, timeline):
         ok = False
