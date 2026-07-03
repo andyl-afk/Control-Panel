@@ -578,6 +578,9 @@ class ColorEngine:
             features["apply_drx"] = feature_from_method(graph, "ApplyGradeFromDRX")
             features["set_lut"] = feature_from_method(graph, "SetLUT")
             features["reset_grades"] = feature_from_method(graph, "ResetAllGrades")
+            # Phase 19 — read-only node-FX inventory. The API can only READ
+            # tools in a colour node, never add/modify them.
+            features["node_tools"] = feature_from_method(graph, "GetToolsInNode")
 
             # Studio AI — absence from scripting doesn't prove the feature is
             # missing, only that it isn't scriptable here, so default unknown.
@@ -1717,6 +1720,52 @@ class ColorEngine:
         resolve2, _, item2, _, comp2, _ = self._fusion_objects()
         self._emit_fusion_state(resolve2, item2, comp2)
 
+    # -- node FX inventory (Phase 19) -----------------------------------------
+
+    def handle_node_tools(self, cmd):
+        """Read-only Color-page inventory: per node, its label and the
+        tools/ResolveFX inside it via Graph.GetToolsInNode. Introspection
+        only — Resolve's API cannot add or modify colour nodes, so this
+        answers 'what FX are on this clip', never changes it. Runs on the
+        reader thread (instant, works while grading)."""
+        with self.lock:
+            _, item, reason = self.session.current_context()
+            if item is None:
+                emit({"v": 1, "type": "node_tools", "available": False,
+                      "reason": reason})
+                return
+            graph = None
+            if has_method(item, "GetNodeGraph"):
+                graph = safe_call(lambda: item.GetNodeGraph())
+            if graph is None:
+                emit({"v": 1, "type": "node_tools", "available": False,
+                      "reason": "Clip has no readable node graph"})
+                return
+            if not has_method(graph, "GetToolsInNode"):
+                emit({"v": 1, "type": "node_tools", "available": False,
+                      "reason": "GetToolsInNode is unavailable on this Resolve"})
+                return
+            count = self.fresh_node_count(item)
+            nodes = []
+            for index in range(1, count + 1):
+                tools = safe_call(lambda i=index: graph.GetToolsInNode(i))
+                if isinstance(tools, dict):
+                    tools = [tools[key] for key in sorted(tools)]
+                if not isinstance(tools, (list, tuple)):
+                    tools = []
+                label = None
+                if has_method(graph, "GetNodeLabel"):
+                    label = safe_call(lambda i=index: graph.GetNodeLabel(i))
+                nodes.append({
+                    "index": index,
+                    "label": str(label) if label else "",
+                    "tools": [str(tool) for tool in tools],
+                })
+            emit({"v": 1, "type": "node_tools", "available": True,
+                  "node": self.active_node, "node_count": count,
+                  "nodes": nodes})
+            log("node_tools: %d node(s) inventoried" % count)
+
     # -- bypass (hold-to-compare) -------------------------------------------
 
     def handle_bypass(self, enabled):
@@ -2172,6 +2221,10 @@ def main():
                 # System introspection: answer immediately, off the colour
                 # batch, so it works even with no project/clip open.
                 engine.handle_capability_probe(cmd)
+            elif cmd.get("cmd") == "node_tools":
+                # Read-only node-FX inventory (Phase 19): instant, never
+                # queued behind grading batches.
+                engine.handle_node_tools(cmd)
             elif cmd.get("cmd") == "fusion_probe":
                 # Fusion introspection (Phase 15): same contract as the
                 # capability probe — immediate, non-mutating.

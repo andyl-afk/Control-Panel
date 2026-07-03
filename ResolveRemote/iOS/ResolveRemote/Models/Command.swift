@@ -142,6 +142,26 @@ enum FeatureStatus: String {
     }
 }
 
+/// Phase 19 — read-only Color-page node inventory (type: "node_tools"):
+/// per node, its label and the tools/ResolveFX inside it. The scripting API
+/// can only READ node contents — this never implies add/edit capability.
+struct NodeToolsState: Decodable, Equatable {
+    let available: Bool?
+    let reason: String?
+    /// The stepper-selected node (where grades land) and total node count.
+    let node: Int?
+    let node_count: Int?
+    let nodes: [NodeToolsNode]?
+}
+
+struct NodeToolsNode: Decodable, Equatable, Identifiable {
+    let index: Int
+    let label: String?
+    let tools: [String]?
+
+    var id: Int { index }
+}
+
 /// Phase 17 — live Fusion surface state (type: "fusion_state"), the Fusion
 /// analogue of ColorState. Sent for fusion_status and after every applied
 /// knob/XY batch. `tool` is the parameter target (the iPad-selected tool or
@@ -243,6 +263,8 @@ enum CommandName {
     static let resetGrade = "reset_grade"
     static let setLUT = "set_lut"
     static let applyDRX = "apply_drx"
+    // Phase 19 — read-only Color-page node-FX inventory.
+    static let nodeTools = "node_tools"
 
     // System mode (mode: "system")
     static let capabilityProbe = "capability_probe"

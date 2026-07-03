@@ -45,6 +45,15 @@ struct iPadColourModeView: View {
         .onAppear {
             requestStatus()
             connection.send(cmd: CommandName.listPresets, mode: "color")
+            connection.requestNodeTools()
+        }
+        // Refresh the read-only node-FX inventory when the node tree or the
+        // stepper target changes (Phase 19).
+        .onChange(of: connection.colorState?.node_count) { _, _ in
+            if connection.isConnected { connection.requestNodeTools() }
+        }
+        .onChange(of: connection.colorState?.node) { _, _ in
+            if connection.isConnected { connection.requestNodeTools() }
         }
         .task {
             // Same freshness poll as the iPhone colour tab (Phase 8.1).
@@ -57,6 +66,7 @@ struct iPadColourModeView: View {
             if connected {
                 requestStatus()
                 connection.send(cmd: CommandName.listPresets, mode: "color")
+                connection.requestNodeTools()
             } else {
                 comparing = false
             }
@@ -144,8 +154,77 @@ struct iPadColourModeView: View {
                 }
             }
 
+            PadPanel(title: "NODE FX (read-only)") {
+                nodeFXStrip
+            }
+
             Spacer(minLength: 0)
         }
+    }
+
+    // MARK: Node FX inventory (Phase 19 — GetToolsInNode, read-only)
+
+    private var nodeFXStrip: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let inventory = connection.nodeTools, inventory.available == true,
+               let nodes = inventory.nodes, !nodes.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(nodes) { node in
+                            nodeFXCard(node, active: node.index == (inventory.node ?? -1))
+                        }
+                    }
+                }
+            } else {
+                Text(connection.nodeTools?.reason
+                     ?? "Node FX inventory loads with a clip on the Color page.")
+                    .font(.system(size: 9))
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(2)
+            }
+
+            Text("The API can only read node contents — add or edit FX in Resolve (or apply a PowerGrade .drx from LOOKS).")
+                .font(.system(size: 8))
+                .foregroundColor(Theme.textSecondary.opacity(0.7))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func nodeFXCard(_ node: NodeToolsNode, active: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                Text("N\(node.index)")
+                    .font(.system(size: 9, weight: .bold).monospacedDigit())
+                    .foregroundColor(active ? .black : Theme.textPrimary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(active ? Theme.colorAccent : Theme.surface)
+                    .clipShape(Capsule())
+                if let label = node.label, !label.isEmpty {
+                    Text(label)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Theme.textPrimary)
+                        .lineLimit(1)
+                }
+            }
+            if let tools = node.tools, !tools.isEmpty {
+                Text(tools.joined(separator: " · "))
+                    .font(.system(size: 8))
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: 190, alignment: .leading)
+            } else {
+                Text("no FX")
+                    .font(.system(size: 8))
+                    .foregroundColor(Theme.textSecondary.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Theme.surfaceRaised.opacity(active ? 1 : 0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9)
+            .strokeBorder(active ? Theme.colorAccent.opacity(0.5) : Theme.stroke, lineWidth: 1))
     }
 
     // MARK: Adjustments — mock 2×4 grid, labels above the knobs

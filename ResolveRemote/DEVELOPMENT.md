@@ -378,6 +378,18 @@ override `RESOLVE_REMOTE_COMPS_DIR` for tests): the folder is the UI,
 exactly like Looks — `.comp` files become the MACROS/COMP PRESETS chips
 (tap = import), and Export writes auto-named files there.
 
+## Node FX inventory (Phase 19)
+
+`{"mode":"color","cmd":"node_tools"}` (reader thread, instant) answers
+"what FX are on this clip's colour nodes" via `Graph.GetToolsInNode` +
+`GetNodeLabel`: one `{"type":"node_tools","available",…,"node",
+"node_count","nodes":[{index,label,tools:[…]}]}` line. **Read-only by API
+design** — Resolve's scripting cannot add, edit or reorder colour nodes or
+their OFX, so the UI (Colour tab → NODE FX panel, active node highlighted,
+auto-refresh on node/count changes) states that and points at the
+PowerGrade-.drx Looks workflow for applying FX chains remotely. The
+capability probe reports the feature as `node_tools`.
+
 ## Finding the Mac's IP (manual fallback)
 
 The helper menu shows it; or `ipconfig getifaddr en0`; or System

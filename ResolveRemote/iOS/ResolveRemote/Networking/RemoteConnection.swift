@@ -63,6 +63,8 @@ final class RemoteConnection: ObservableObject {
     /// Phase 17 — live Fusion surface state and the Mac's comp preset files.
     @Published private(set) var fusionState: FusionState?
     @Published private(set) var fusionCompFiles: [String]?
+    /// Phase 19 — read-only Color-page node-FX inventory.
+    @Published private(set) var nodeTools: NodeToolsState?
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -341,6 +343,12 @@ final class RemoteConnection: ObservableObject {
         send(cmd: CommandName.openFusionPage, mode: "fusion")
     }
 
+    /// Ask for the Color-page node-FX inventory (Phase 19, read-only).
+    /// Result arrives on `nodeTools`.
+    func requestNodeTools() {
+        send(cmd: CommandName.nodeTools, mode: "color")
+    }
+
     private struct Reply: Decodable {
         // Most helper messages key on `cmd`; capability_state uses `type`.
         let cmd: String?
@@ -383,6 +391,13 @@ final class RemoteConnection: ObservableObject {
                 self.capabilityState = caps
                 self.capabilityJSON = json
                 self.capabilityReceivedAt = Date()
+            }
+        case "node_tools":
+            guard let state = try? decoder.decode(NodeToolsState.self, from: lineData) else { return }
+            DispatchQueue.main.async {
+                if self.nodeTools != state {
+                    self.nodeTools = state
+                }
             }
         case "fusion_state":
             guard let state = try? decoder.decode(FusionState.self, from: lineData) else { return }

@@ -32,6 +32,7 @@ struct CapabilityProbeView: View {
             ("apply_drx", "Apply .drx look"),
             ("set_lut", "Set LUT"),
             ("reset_grades", "Reset grades"),
+            ("node_tools", "Read node FX (GetToolsInNode)"),
         ]),
         Group(title: "FAIRLIGHT / TRACKS", rows: [
             ("track_control", "Track enable / lock / name"),
