@@ -338,9 +338,13 @@ The iPad Fusion tab is the wired mockup surface. Design rules:
   command answers instantly on the reader thread.
 - **Curated param map** (`FUSION_PARAM_MAP`): only inputs with well-known
   ids, each with (min, max, default, step). The sidecar refuses to set a
-  param whose GetInput isn't numeric — never blind. Unmapped tools show
-  "no mapped parameters" in the UI. XY drives `Center` on Transform /
-  Merge / Text+ only (`FUSION_XY_MAP`), clamped ±0.5 outside the frame.
+  param whose GetInput isn't numeric — never blind (a wrong id = dead
+  knob + "?" readout, not a blind set). Unmapped tools show "no mapped
+  parameters" in the UI. Phase 20 expanded coverage to ~20 tool types
+  (generators, masks, blurs, colour tools, Retime, …) and the XY map
+  (`FUSION_XY_MAP`) to 9 (Transform/Merge/Text+/DVE/four masks via
+  `Center`, Drop Shadow via `ShadowOffset`), clamped ±0.5 outside the
+  frame. Curve/point/enum-driven tools stay honestly unmapped.
 - **Tool allowlist** (`FUSION_ADD_TOOL_IDS`), exact RegID match. The
   Phase-17 hardware pass on Resolve 21.0.0b verified the original 16 ids
   **except PlanarTracker** (Resolve refuses to create it via scripting —

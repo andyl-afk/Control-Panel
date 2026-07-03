@@ -171,11 +171,11 @@ FUSION_INPUT_ALLOWLIST = {
 
 # Phase 17/18 production Fusion surface. Tool registry ids the iPad's
 # TOOLS grid may add, matched EXACTLY against the id sent ("Transform"
-# must not substring-match "PlanarTransform"). Hardware pass on Resolve
-# 21.0.0b confirmed everything in the original 16 EXCEPT PlanarTracker
-# (Resolve refuses to create it via scripting — kept listed for future
-# versions). Phase 18 expands this to the full curated catalog behind the
-# iPad's customisable grid; a wrong id still fails clean (resolve_error).
+# must not substring-match "PlanarTransform"). Hardware passes on Resolve
+# 21.0.0b confirmed the whole catalog EXCEPT PlanarTracker and
+# PlanarTransform (Resolve refuses to create the planar tools via
+# scripting — kept listed for future versions). A wrong id still fails
+# clean (resolve_error).
 FUSION_ADD_TOOL_IDS = (
     # Generators / text
     "Background", "FastNoise", "TextPlus", "Text3D",
@@ -204,29 +204,91 @@ FUSION_ADD_TOOL_IDS = (
 )
 
 # Curated per-tool parameter map for the SELECTED PARAMETER knob:
-# {regid: {input_id: (min, max, default, step-per-tick)}}. Deliberately
-# small and honest — only inputs with well-known ids; anything else shows
-# "no mapped parameters" instead of guessing.
+# {regid: {input_id: (min, max, default, step-per-tick)}}. Only inputs
+# with well-known Fusion ids; anything else shows "no mapped parameters"
+# instead of guessing. Extra guard downstream: a param whose GetInput
+# doesn't return a number is refused, so a wrong id here can never set
+# blind — the knob just stays dead and the readout shows "?".
+# Phase 20 expanded coverage after the hardware pass verified the tools.
 FUSION_PARAM_MAP = {
-    "Transform": {
-        "Size": (0.0, 5.0, 1.0, 0.01),
-        "Angle": (-360.0, 360.0, 0.0, 1.0),
-    },
-    "Merge": {
-        "Blend": (0.0, 1.0, 1.0, 0.005),
-        "Size": (0.0, 5.0, 1.0, 0.01),
-    },
-    "TextPlus": {
-        "Size": (0.0, 0.5, 0.08, 0.001),
-    },
+    # -- generators -----------------------------------------------------
     "Background": {
         "TopLeftRed": (0.0, 1.0, 0.0, 0.005),
         "TopLeftGreen": (0.0, 1.0, 0.0, 0.005),
         "TopLeftBlue": (0.0, 1.0, 0.0, 0.005),
     },
+    "FastNoise": {
+        "Detail": (0.0, 10.0, 2.0, 0.05),
+        "Contrast": (0.0, 4.0, 1.0, 0.01),
+        "Brightness": (-1.0, 1.0, 0.0, 0.005),
+        "XScale": (0.0, 100.0, 5.0, 0.25),
+    },
+    "TextPlus": {
+        "Size": (0.0, 0.5, 0.08, 0.001),
+    },
+    # -- composite ------------------------------------------------------
+    "Merge": {
+        "Blend": (0.0, 1.0, 1.0, 0.005),
+        "Size": (0.0, 5.0, 1.0, 0.01),
+        "Angle": (-360.0, 360.0, 0.0, 1.0),
+    },
+    "Dissolve": {
+        "Mix": (0.0, 1.0, 0.5, 0.005),
+    },
+    # -- transform ------------------------------------------------------
+    "Transform": {
+        "Size": (0.0, 5.0, 1.0, 0.01),
+        "Angle": (-360.0, 360.0, 0.0, 1.0),
+        "Aspect": (0.1, 10.0, 1.0, 0.005),
+    },
+    "DVE": {
+        "ZMove": (0.0, 10.0, 1.0, 0.01),
+    },
+    # -- masks (shared input names across mask tools) --------------------
+    "RectangleMask": {
+        "Level": (0.0, 1.0, 1.0, 0.005),
+        "SoftEdge": (0.0, 0.5, 0.0, 0.002),
+        "Width": (0.0, 2.0, 0.5, 0.005),
+        "Height": (0.0, 2.0, 0.5, 0.005),
+    },
+    "EllipseMask": {
+        "Level": (0.0, 1.0, 1.0, 0.005),
+        "SoftEdge": (0.0, 0.5, 0.0, 0.002),
+        "Width": (0.0, 2.0, 0.5, 0.005),
+        "Height": (0.0, 2.0, 0.5, 0.005),
+    },
+    "TriangleMask": {
+        "Level": (0.0, 1.0, 1.0, 0.005),
+        "SoftEdge": (0.0, 0.5, 0.0, 0.002),
+    },
+    "PolylineMask": {
+        "Level": (0.0, 1.0, 1.0, 0.005),
+        "SoftEdge": (0.0, 0.5, 0.0, 0.002),
+    },
+    "BSplineMask": {
+        "Level": (0.0, 1.0, 1.0, 0.005),
+        "SoftEdge": (0.0, 0.5, 0.0, 0.002),
+    },
+    "WandMask": {
+        "Level": (0.0, 1.0, 1.0, 0.005),
+        "SoftEdge": (0.0, 0.5, 0.0, 0.002),
+    },
+    # -- blur / sharpen ---------------------------------------------------
     "Blur": {
         "XBlurSize": (0.0, 100.0, 10.0, 0.5),
+        "Blend": (0.0, 1.0, 1.0, 0.005),
     },
+    "DirectionalBlur": {
+        "Length": (0.0, 0.5, 0.02, 0.001),
+        "Angle": (-360.0, 360.0, 0.0, 1.0),
+    },
+    "Defocus": {
+        "DefocusSize": (0.0, 100.0, 10.0, 0.5),
+    },
+    "Sharpen": {
+        "Amount": (0.0, 5.0, 1.0, 0.02),
+    },
+    # -- light / effects --------------------------------------------------
     "Glow": {
         "Gain": (0.0, 10.0, 1.0, 0.02),
         "XGlowSize": (0.0, 100.0, 10.0, 0.5),
@@ -235,14 +297,45 @@ FUSION_PARAM_MAP = {
         "Gain": (0.0, 10.0, 1.0, 0.02),
         "XGlowSize": (0.0, 100.0, 10.0, 0.5),
     },
+    "Shadow": {
+        "Softness": (0.0, 50.0, 5.0, 0.2),
+    },
+    # -- colour -----------------------------------------------------------
     "ColorCorrector": {
         "MasterRGBGain": (0.0, 2.0, 1.0, 0.005),
+        "MasterRGBGamma": (0.2, 5.0, 1.0, 0.005),
+        "MasterSaturation": (0.0, 4.0, 1.0, 0.005),
+    },
+    "BrightnessContrast": {
+        "Gain": (0.0, 4.0, 1.0, 0.005),
+        "Gamma": (0.2, 5.0, 1.0, 0.005),
+        "Brightness": (-1.0, 1.0, 0.0, 0.005),
+        "Contrast": (0.0, 4.0, 1.0, 0.005),
+        "Saturation": (0.0, 4.0, 1.0, 0.005),
+    },
+    # -- keying -----------------------------------------------------------
+    "MatteControl": {
+        "MatteBlur": (0.0, 50.0, 0.0, 0.2),
+    },
+    # -- time -------------------------------------------------------------
+    "TimeSpeed": {
+        "Speed": (-4.0, 4.0, 1.0, 0.01),
     },
 }
 
 # Which tools the XY CONTROL pad drives (regid -> point input id), and the
 # per-axis clamp (allows moving content off-screen, but not into orbit).
-FUSION_XY_MAP = {"Transform": "Center", "Merge": "Center", "TextPlus": "Center"}
+FUSION_XY_MAP = {
+    "Transform": "Center",
+    "Merge": "Center",
+    "TextPlus": "Center",
+    "DVE": "Center",
+    "RectangleMask": "Center",
+    "EllipseMask": "Center",
+    "PolylineMask": "Center",
+    "BSplineMask": "Center",
+    "Shadow": "ShadowOffset",
+}
 CLAMP_FUSION_CENTER = (-0.5, 1.5)
 FUSION_CENTER_DEFAULT = [0.5, 0.5]
 

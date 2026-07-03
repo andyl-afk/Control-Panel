@@ -14,71 +14,72 @@ struct FusionCatalogEntry: Identifiable {
 }
 
 /// The curated catalog behind the customisable TOOLS grid. Hardware pass
-/// on Resolve 21.0.0b verified the original 16 minus PlanarTracker.
+/// on Resolve 21.0.0b verified the whole catalog minus the planar tools.
 enum FusionToolCatalog {
     static let all: [FusionCatalogEntry] = [
         // Generators / text
         .init(id: "Background", label: "Background", icon: "rectangle.fill", category: "GENERATORS", verified: true),
-        .init(id: "FastNoise", label: "Fast Noise", icon: "water.waves", category: "GENERATORS", verified: false),
+        .init(id: "FastNoise", label: "Fast Noise", icon: "water.waves", category: "GENERATORS", verified: true),
         .init(id: "TextPlus", label: "Text+", icon: "textformat", category: "GENERATORS", verified: true),
-        .init(id: "Text3D", label: "Text 3D", icon: "cube", category: "GENERATORS", verified: false),
+        .init(id: "Text3D", label: "Text 3D", icon: "cube", category: "GENERATORS", verified: true),
         // Composite
         .init(id: "Merge", label: "Merge", icon: "square.on.square", category: "COMPOSITE", verified: true),
-        .init(id: "Dissolve", label: "Dissolve", icon: "square.on.square.dashed", category: "COMPOSITE", verified: false),
+        .init(id: "Dissolve", label: "Dissolve", icon: "square.on.square.dashed", category: "COMPOSITE", verified: true),
         // Transform
         .init(id: "Transform", label: "Transform", icon: "arrow.up.and.down.and.arrow.left.and.right", category: "TRANSFORM", verified: true),
-        .init(id: "Resize", label: "Resize", icon: "arrow.up.left.and.arrow.down.right", category: "TRANSFORM", verified: false),
-        .init(id: "Crop", label: "Crop", icon: "crop", category: "TRANSFORM", verified: false),
-        .init(id: "Letterbox", label: "Letterbox", icon: "rectangle.ratio.16.to.9", category: "TRANSFORM", verified: false),
-        .init(id: "DVE", label: "DVE", icon: "rotate.3d", category: "TRANSFORM", verified: false),
-        .init(id: "CameraShake", label: "Camera Shake", icon: "camera.metering.unknown", category: "TRANSFORM", verified: false),
+        .init(id: "Resize", label: "Resize", icon: "arrow.up.left.and.arrow.down.right", category: "TRANSFORM", verified: true),
+        .init(id: "Crop", label: "Crop", icon: "crop", category: "TRANSFORM", verified: true),
+        .init(id: "Letterbox", label: "Letterbox", icon: "rectangle.ratio.16.to.9", category: "TRANSFORM", verified: true),
+        .init(id: "DVE", label: "DVE", icon: "rotate.3d", category: "TRANSFORM", verified: true),
+        .init(id: "CameraShake", label: "Camera Shake", icon: "camera.metering.unknown", category: "TRANSFORM", verified: true),
         // Tracking
         .init(id: "Tracker", label: "Tracker", icon: "scope", category: "TRACKING", verified: true),
         .init(id: "PlanarTracker", label: "Planar Tracker", icon: "square.dashed", category: "TRACKING", verified: false,
               note: "not scriptable on 21.0b"),
-        .init(id: "PlanarTransform", label: "Planar Transform", icon: "skew", category: "TRACKING", verified: false),
+        .init(id: "PlanarTransform", label: "Planar Transform", icon: "skew", category: "TRACKING", verified: false,
+              note: "not scriptable on 21.0b"),
         // Masks
         .init(id: "RectangleMask", label: "Rectangle", icon: "rectangle", category: "MASKS", verified: true),
         .init(id: "EllipseMask", label: "Ellipse", icon: "circle", category: "MASKS", verified: true),
         .init(id: "PolylineMask", label: "Polygon", icon: "pentagon", category: "MASKS", verified: true),
-        .init(id: "BSplineMask", label: "B-Spline", icon: "scribble.variable", category: "MASKS", verified: false),
-        .init(id: "TriangleMask", label: "Triangle", icon: "triangle", category: "MASKS", verified: false),
-        .init(id: "WandMask", label: "Wand", icon: "wand.and.rays", category: "MASKS", verified: false),
+        .init(id: "BSplineMask", label: "B-Spline", icon: "scribble.variable", category: "MASKS", verified: true),
+        .init(id: "TriangleMask", label: "Triangle", icon: "triangle", category: "MASKS", verified: true),
+        .init(id: "WandMask", label: "Wand", icon: "wand.and.rays", category: "MASKS", verified: true),
         // Blur / sharpen
         .init(id: "Blur", label: "Blur", icon: "drop", category: "BLUR / SHARPEN", verified: true),
-        .init(id: "DirectionalBlur", label: "Directional Blur", icon: "wind", category: "BLUR / SHARPEN", verified: false),
-        .init(id: "Defocus", label: "Defocus", icon: "camera.aperture", category: "BLUR / SHARPEN", verified: false),
-        .init(id: "Sharpen", label: "Sharpen", icon: "triangle.tophalf.filled", category: "BLUR / SHARPEN", verified: false),
+        .init(id: "DirectionalBlur", label: "Directional Blur", icon: "wind", category: "BLUR / SHARPEN", verified: true),
+        .init(id: "Defocus", label: "Defocus", icon: "camera.aperture", category: "BLUR / SHARPEN", verified: true),
+        .init(id: "Sharpen", label: "Sharpen", icon: "triangle.tophalf.filled", category: "BLUR / SHARPEN", verified: true),
         // Light / effects
         .init(id: "Glow", label: "Glow", icon: "sun.max", category: "LIGHT / EFFECTS", verified: true),
-        .init(id: "SoftGlow", label: "Soft Glow", icon: "sun.haze", category: "LIGHT / EFFECTS", verified: false),
+        .init(id: "SoftGlow", label: "Soft Glow", icon: "sun.haze", category: "LIGHT / EFFECTS", verified: true),
         .init(id: "Shadow", label: "Drop Shadow", icon: "square.fill.on.square", category: "LIGHT / EFFECTS", verified: true),
-        .init(id: "Highlight", label: "Highlight", icon: "sparkles", category: "LIGHT / EFFECTS", verified: false),
+        .init(id: "Highlight", label: "Highlight", icon: "sparkles", category: "LIGHT / EFFECTS", verified: true),
         // Colour
         .init(id: "ColorCorrector", label: "Color Corrector", icon: "dial.medium", category: "COLOUR", verified: true),
-        .init(id: "ColorCurves", label: "Color Curves", icon: "point.topleft.down.to.point.bottomright.curvepath", category: "COLOUR", verified: false),
-        .init(id: "HueCurves", label: "Hue Curves", icon: "circle.grid.cross", category: "COLOUR", verified: false),
-        .init(id: "BrightnessContrast", label: "Bright / Contrast", icon: "circle.lefthalf.filled", category: "COLOUR", verified: false),
-        .init(id: "ColorGain", label: "Color Gain", icon: "slider.horizontal.3", category: "COLOUR", verified: false),
-        .init(id: "WhiteBalance", label: "White Balance", icon: "thermometer.sun", category: "COLOUR", verified: false),
-        .init(id: "ChannelBooleans", label: "Channel Booleans", icon: "square.3.layers.3d", category: "COLOUR", verified: false),
-        .init(id: "Gamut", label: "Gamut", icon: "paintpalette", category: "COLOUR", verified: false),
+        .init(id: "ColorCurves", label: "Color Curves", icon: "point.topleft.down.to.point.bottomright.curvepath", category: "COLOUR", verified: true),
+        .init(id: "HueCurves", label: "Hue Curves", icon: "circle.grid.cross", category: "COLOUR", verified: true),
+        .init(id: "BrightnessContrast", label: "Bright / Contrast", icon: "circle.lefthalf.filled", category: "COLOUR", verified: true),
+        .init(id: "ColorGain", label: "Color Gain", icon: "slider.horizontal.3", category: "COLOUR", verified: true),
+        .init(id: "WhiteBalance", label: "White Balance", icon: "thermometer.sun", category: "COLOUR", verified: true),
+        .init(id: "ChannelBooleans", label: "Channel Booleans", icon: "square.3.layers.3d", category: "COLOUR", verified: true),
+        .init(id: "Gamut", label: "Gamut", icon: "paintpalette", category: "COLOUR", verified: true),
         // Keying
-        .init(id: "DeltaKeyer", label: "Delta Keyer", icon: "person.and.background.dotted", category: "KEYING", verified: false),
-        .init(id: "ChromaKeyer", label: "Chroma Keyer", icon: "drop.triangle", category: "KEYING", verified: false),
-        .init(id: "LumaKeyer", label: "Luma Keyer", icon: "circle.righthalf.filled", category: "KEYING", verified: false),
-        .init(id: "UltraKeyer", label: "Ultra Keyer", icon: "person.crop.rectangle", category: "KEYING", verified: false),
-        .init(id: "MatteControl", label: "Matte Control", icon: "square.2.layers.3d", category: "KEYING", verified: false),
+        .init(id: "DeltaKeyer", label: "Delta Keyer", icon: "person.and.background.dotted", category: "KEYING", verified: true),
+        .init(id: "ChromaKeyer", label: "Chroma Keyer", icon: "drop.triangle", category: "KEYING", verified: true),
+        .init(id: "LumaKeyer", label: "Luma Keyer", icon: "circle.righthalf.filled", category: "KEYING", verified: true),
+        .init(id: "UltraKeyer", label: "Ultra Keyer", icon: "person.crop.rectangle", category: "KEYING", verified: true),
+        .init(id: "MatteControl", label: "Matte Control", icon: "square.2.layers.3d", category: "KEYING", verified: true),
         // Paint / warp
         .init(id: "Paint", label: "Paint", icon: "paintbrush", category: "PAINT / WARP", verified: true),
-        .init(id: "GridWarp", label: "Grid Warp", icon: "grid", category: "PAINT / WARP", verified: false),
-        .init(id: "Displace", label: "Displace", icon: "water.waves.and.arrow.up", category: "PAINT / WARP", verified: false),
-        .init(id: "CornerPositioner", label: "Corner Pin", icon: "arrow.down.forward.and.arrow.up.backward", category: "PAINT / WARP", verified: false),
+        .init(id: "GridWarp", label: "Grid Warp", icon: "grid", category: "PAINT / WARP", verified: true),
+        .init(id: "Displace", label: "Displace", icon: "water.waves.and.arrow.up", category: "PAINT / WARP", verified: true),
+        .init(id: "CornerPositioner", label: "Corner Pin", icon: "arrow.down.forward.and.arrow.up.backward", category: "PAINT / WARP", verified: true),
         // Time / optics
         .init(id: "TimeSpeed", label: "Retime", icon: "timer", category: "TIME / OPTICS", verified: true),
-        .init(id: "TimeStretcher", label: "Time Stretcher", icon: "clock.arrow.2.circlepath", category: "TIME / OPTICS", verified: false),
+        .init(id: "TimeStretcher", label: "Time Stretcher", icon: "clock.arrow.2.circlepath", category: "TIME / OPTICS", verified: true),
         .init(id: "LensDistort", label: "Lens Distort", icon: "camera.filters", category: "TIME / OPTICS", verified: true),
-        .init(id: "FilmGrain", label: "Film Grain", icon: "film", category: "TIME / OPTICS", verified: false),
+        .init(id: "FilmGrain", label: "Film Grain", icon: "film", category: "TIME / OPTICS", verified: true),
     ]
 
     /// The mockup's original 16 — the grid before any customisation.
