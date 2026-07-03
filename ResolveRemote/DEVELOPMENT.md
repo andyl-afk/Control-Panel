@@ -341,12 +341,19 @@ The iPad Fusion tab is the wired mockup surface. Design rules:
   param whose GetInput isn't numeric — never blind. Unmapped tools show
   "no mapped parameters" in the UI. XY drives `Center` on Transform /
   Merge / Text+ only (`FUSION_XY_MAP`), clamped ±0.5 outside the frame.
-- **Tool allowlist** (`FUSION_ADD_TOOL_IDS`), exact RegID match: proven —
-  TextPlus, Background, Merge, Transform; high-confidence — Tracker, Blur,
-  Glow, Paint, ColorCorrector, RectangleMask, EllipseMask, PolylineMask;
-  unverified (flagged in the UI) — PlanarTracker, Shadow, TimeSpeed,
-  LensDistort. Wrong ids fail clean (`resolve_error`) and get corrected
-  after a hardware pass.
+- **Tool allowlist** (`FUSION_ADD_TOOL_IDS`), exact RegID match. The
+  Phase-17 hardware pass on Resolve 21.0.0b verified the original 16 ids
+  **except PlanarTracker** (Resolve refuses to create it via scripting —
+  kept listed and flagged "not scriptable on 21.0b" in case a future
+  version fixes it). **Phase 18** expanded the allowlist to a ~50-tool
+  curated catalog (generators, composite, transform, tracking, masks,
+  blur, light, colour, keying, paint/warp, time/optics); the iPad TOOLS
+  grid is customisable from that catalog via an Edit Tools picker
+  (selection persists in `fusionToolGridIDs` AppStorage, empty = the
+  default 16). The client catalog (`FusionToolCatalog` in
+  iPadFusionModeView.swift) must stay a SUBSET of the sidecar allowlist —
+  the sidecar remains the guard. Unverified ids are labelled in the UI
+  and fail clean (`resolve_error`) for correction after hardware passes.
 
 Reader-thread commands: `fusion_status` (→ `fusion_state`),
 `fusion_add_tool` (confirm auto-sent — the tap is the intent),

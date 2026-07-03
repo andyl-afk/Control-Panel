@@ -1,11 +1,107 @@
 import SwiftUI
 
+/// One entry in the curated Fusion tool catalog (Phase 18). `verified`
+/// means AddTool with this id succeeded on real hardware; unverified ids
+/// are best-known and fail clean if wrong. Must stay a subset of the
+/// sidecar's FUSION_ADD_TOOL_IDS allowlist.
+struct FusionCatalogEntry: Identifiable {
+    let id: String
+    let label: String
+    let icon: String
+    let category: String
+    let verified: Bool
+    var note: String?
+}
+
+/// The curated catalog behind the customisable TOOLS grid. Hardware pass
+/// on Resolve 21.0.0b verified the original 16 minus PlanarTracker.
+enum FusionToolCatalog {
+    static let all: [FusionCatalogEntry] = [
+        // Generators / text
+        .init(id: "Background", label: "Background", icon: "rectangle.fill", category: "GENERATORS", verified: true),
+        .init(id: "FastNoise", label: "Fast Noise", icon: "water.waves", category: "GENERATORS", verified: false),
+        .init(id: "TextPlus", label: "Text+", icon: "textformat", category: "GENERATORS", verified: true),
+        .init(id: "Text3D", label: "Text 3D", icon: "cube", category: "GENERATORS", verified: false),
+        // Composite
+        .init(id: "Merge", label: "Merge", icon: "square.on.square", category: "COMPOSITE", verified: true),
+        .init(id: "Dissolve", label: "Dissolve", icon: "square.on.square.dashed", category: "COMPOSITE", verified: false),
+        // Transform
+        .init(id: "Transform", label: "Transform", icon: "arrow.up.and.down.and.arrow.left.and.right", category: "TRANSFORM", verified: true),
+        .init(id: "Resize", label: "Resize", icon: "arrow.up.left.and.arrow.down.right", category: "TRANSFORM", verified: false),
+        .init(id: "Crop", label: "Crop", icon: "crop", category: "TRANSFORM", verified: false),
+        .init(id: "Letterbox", label: "Letterbox", icon: "rectangle.ratio.16.to.9", category: "TRANSFORM", verified: false),
+        .init(id: "DVE", label: "DVE", icon: "rotate.3d", category: "TRANSFORM", verified: false),
+        .init(id: "CameraShake", label: "Camera Shake", icon: "camera.metering.unknown", category: "TRANSFORM", verified: false),
+        // Tracking
+        .init(id: "Tracker", label: "Tracker", icon: "scope", category: "TRACKING", verified: true),
+        .init(id: "PlanarTracker", label: "Planar Tracker", icon: "square.dashed", category: "TRACKING", verified: false,
+              note: "not scriptable on 21.0b"),
+        .init(id: "PlanarTransform", label: "Planar Transform", icon: "skew", category: "TRACKING", verified: false),
+        // Masks
+        .init(id: "RectangleMask", label: "Rectangle", icon: "rectangle", category: "MASKS", verified: true),
+        .init(id: "EllipseMask", label: "Ellipse", icon: "circle", category: "MASKS", verified: true),
+        .init(id: "PolylineMask", label: "Polygon", icon: "pentagon", category: "MASKS", verified: true),
+        .init(id: "BSplineMask", label: "B-Spline", icon: "scribble.variable", category: "MASKS", verified: false),
+        .init(id: "TriangleMask", label: "Triangle", icon: "triangle", category: "MASKS", verified: false),
+        .init(id: "WandMask", label: "Wand", icon: "wand.and.rays", category: "MASKS", verified: false),
+        // Blur / sharpen
+        .init(id: "Blur", label: "Blur", icon: "drop", category: "BLUR / SHARPEN", verified: true),
+        .init(id: "DirectionalBlur", label: "Directional Blur", icon: "wind", category: "BLUR / SHARPEN", verified: false),
+        .init(id: "Defocus", label: "Defocus", icon: "camera.aperture", category: "BLUR / SHARPEN", verified: false),
+        .init(id: "Sharpen", label: "Sharpen", icon: "triangle.tophalf.filled", category: "BLUR / SHARPEN", verified: false),
+        // Light / effects
+        .init(id: "Glow", label: "Glow", icon: "sun.max", category: "LIGHT / EFFECTS", verified: true),
+        .init(id: "SoftGlow", label: "Soft Glow", icon: "sun.haze", category: "LIGHT / EFFECTS", verified: false),
+        .init(id: "Shadow", label: "Drop Shadow", icon: "square.fill.on.square", category: "LIGHT / EFFECTS", verified: true),
+        .init(id: "Highlight", label: "Highlight", icon: "sparkles", category: "LIGHT / EFFECTS", verified: false),
+        // Colour
+        .init(id: "ColorCorrector", label: "Color Corrector", icon: "dial.medium", category: "COLOUR", verified: true),
+        .init(id: "ColorCurves", label: "Color Curves", icon: "point.topleft.down.to.point.bottomright.curvepath", category: "COLOUR", verified: false),
+        .init(id: "HueCurves", label: "Hue Curves", icon: "circle.grid.cross", category: "COLOUR", verified: false),
+        .init(id: "BrightnessContrast", label: "Bright / Contrast", icon: "circle.lefthalf.filled", category: "COLOUR", verified: false),
+        .init(id: "ColorGain", label: "Color Gain", icon: "slider.horizontal.3", category: "COLOUR", verified: false),
+        .init(id: "WhiteBalance", label: "White Balance", icon: "thermometer.sun", category: "COLOUR", verified: false),
+        .init(id: "ChannelBooleans", label: "Channel Booleans", icon: "square.3.layers.3d", category: "COLOUR", verified: false),
+        .init(id: "Gamut", label: "Gamut", icon: "paintpalette", category: "COLOUR", verified: false),
+        // Keying
+        .init(id: "DeltaKeyer", label: "Delta Keyer", icon: "person.and.background.dotted", category: "KEYING", verified: false),
+        .init(id: "ChromaKeyer", label: "Chroma Keyer", icon: "drop.triangle", category: "KEYING", verified: false),
+        .init(id: "LumaKeyer", label: "Luma Keyer", icon: "circle.righthalf.filled", category: "KEYING", verified: false),
+        .init(id: "UltraKeyer", label: "Ultra Keyer", icon: "person.crop.rectangle", category: "KEYING", verified: false),
+        .init(id: "MatteControl", label: "Matte Control", icon: "square.2.layers.3d", category: "KEYING", verified: false),
+        // Paint / warp
+        .init(id: "Paint", label: "Paint", icon: "paintbrush", category: "PAINT / WARP", verified: true),
+        .init(id: "GridWarp", label: "Grid Warp", icon: "grid", category: "PAINT / WARP", verified: false),
+        .init(id: "Displace", label: "Displace", icon: "water.waves.and.arrow.up", category: "PAINT / WARP", verified: false),
+        .init(id: "CornerPositioner", label: "Corner Pin", icon: "arrow.down.forward.and.arrow.up.backward", category: "PAINT / WARP", verified: false),
+        // Time / optics
+        .init(id: "TimeSpeed", label: "Retime", icon: "timer", category: "TIME / OPTICS", verified: true),
+        .init(id: "TimeStretcher", label: "Time Stretcher", icon: "clock.arrow.2.circlepath", category: "TIME / OPTICS", verified: false),
+        .init(id: "LensDistort", label: "Lens Distort", icon: "camera.filters", category: "TIME / OPTICS", verified: true),
+        .init(id: "FilmGrain", label: "Film Grain", icon: "film", category: "TIME / OPTICS", verified: false),
+    ]
+
+    /// The mockup's original 16 — the grid before any customisation.
+    static let defaultGridIDs = [
+        "TextPlus", "Background", "Merge", "Transform",
+        "Tracker", "PlanarTracker", "Blur", "Glow",
+        "Shadow", "RectangleMask", "EllipseMask", "PolylineMask",
+        "Paint", "TimeSpeed", "LensDistort", "ColorCorrector",
+    ]
+
+    static func entry(for id: String) -> FusionCatalogEntry? {
+        all.first { $0.id == id }
+    }
+}
+
 /// iPad Fusion mode — Phase 17: the wired control surface. Tools are added
 /// for real (allowlisted sidecar-side), the SELECTED PARAMETER knob and XY
 /// pad drive live tool inputs through the 30Hz batch path, and comps are
 /// managed end-to-end. The iPad owns tool selection by name; `fusion_state`
 /// broadcasts keep the readouts truthful (sidecar state, never local
 /// optimism). Delete Comp is the one destructive action — real dialog.
+/// Phase 18: the TOOLS grid is customisable from the catalog above
+/// (choices persist in fusionToolGridIDs).
 struct iPadFusionModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
     var onBlocked: (String) -> Void
@@ -21,30 +117,20 @@ struct iPadFusionModeView: View {
     @State private var xyBatcher = VectorBatcher()
     @State private var lastXYPoint: CGPoint?
 
+    /// Comma-separated catalog ids chosen for the grid; empty = defaults.
+    @AppStorage("fusionToolGridIDs") private var gridIDsRaw = ""
+    @State private var showToolPicker = false
+
     private var caps: FusionCapabilityState? { connection.fusionCapabilityState }
     private var fstate: FusionState? { connection.fusionState }
     private var live: Bool { connection.isConnected && fstate?.available == true }
 
-    /// The mockup's 16 tools. `verified` = RegID proven on hardware; the
-    /// rest are best-known ids — a wrong one fails clean and gets corrected.
-    private let tools: [(label: String, id: String, icon: String, verified: Bool)] = [
-        ("Text+", "TextPlus", "textformat", true),
-        ("Background", "Background", "rectangle.fill", true),
-        ("Merge", "Merge", "square.on.square", true),
-        ("Transform", "Transform", "arrow.up.and.down.and.arrow.left.and.right", true),
-        ("Tracker", "Tracker", "scope", false),
-        ("Planar Tracker", "PlanarTracker", "square.dashed", false),
-        ("Blur", "Blur", "drop", false),
-        ("Glow", "Glow", "sun.max", false),
-        ("Drop Shadow", "Shadow", "square.fill.on.square", false),
-        ("Rectangle", "RectangleMask", "rectangle", false),
-        ("Ellipse", "EllipseMask", "circle", false),
-        ("Polygon", "PolylineMask", "pentagon", false),
-        ("Paint", "Paint", "paintbrush", false),
-        ("Retime", "TimeSpeed", "timer", false),
-        ("Lens Distort", "LensDistort", "camera.filters", false),
-        ("Color Corrector", "ColorCorrector", "dial.medium", false),
-    ]
+    private var gridTools: [FusionCatalogEntry] {
+        let ids = gridIDsRaw.isEmpty
+            ? FusionToolCatalog.defaultGridIDs
+            : gridIDsRaw.split(separator: ",").map(String.init)
+        return ids.compactMap(FusionToolCatalog.entry(for:))
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -193,7 +279,7 @@ struct iPadFusionModeView: View {
     private var toolsGrid: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
         return LazyVGrid(columns: columns, spacing: 8) {
-            ForEach(tools, id: \.id) { tool in
+            ForEach(gridTools) { tool in
                 Button {
                     addTool(tool.id, label: tool.label)
                 } label: {
@@ -206,7 +292,13 @@ struct iPadFusionModeView: View {
                             .foregroundColor(live ? Theme.textPrimary : Theme.textSecondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
-                        if !tool.verified {
+                        if let note = tool.note {
+                            Text(note)
+                                .font(.system(size: 7))
+                                .foregroundColor(.orange.opacity(0.8))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        } else if !tool.verified {
                             Text("id unverified")
                                 .font(.system(size: 7))
                                 .foregroundColor(.orange.opacity(0.8))
@@ -220,6 +312,31 @@ struct iPadFusionModeView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            // Grid editor entry point (Phase 18).
+            Button {
+                HapticsEngine.shared.buttonTap()
+                showToolPicker = true
+            } label: {
+                VStack(spacing: 5) {
+                    Image(systemName: "slider.horizontal.2.square")
+                        .font(.system(size: 16))
+                        .foregroundColor(Theme.textSecondary)
+                    Text("Edit Tools")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 62)
+                .background(Theme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Theme.stroke, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            }
+            .buttonStyle(.plain)
+        }
+        .sheet(isPresented: $showToolPicker) {
+            FusionToolPickerView(selectedRaw: $gridIDsRaw)
         }
     }
 
@@ -643,5 +760,131 @@ struct iPadFusionModeView: View {
             return nil
         }
         return names[index - 1]
+    }
+}
+
+/// Phase 18 — choose which catalog tools appear on the TOOLS grid. Tap
+/// toggles; newly added tools append at the end of the grid. Selection
+/// persists via the bound AppStorage string (empty = the default 16).
+private struct FusionToolPickerView: View {
+    @Binding var selectedRaw: String
+    @Environment(\.dismiss) private var dismiss
+
+    private var selected: [String] {
+        selectedRaw.isEmpty
+            ? FusionToolCatalog.defaultGridIDs
+            : selectedRaw.split(separator: ",").map(String.init)
+    }
+
+    private var categories: [String] {
+        var seen: [String] = []
+        for entry in FusionToolCatalog.all where !seen.contains(entry.category) {
+            seen.append(entry.category)
+        }
+        return seen
+    }
+
+    var body: some View {
+        ZStack {
+            ThemeBackground()
+
+            VStack(spacing: 12) {
+                HStack {
+                    TrackedLabel(text: "TOOL GRID", size: 13, color: Theme.textPrimary)
+                    Text("\(selected.count) selected")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                    Spacer()
+                    Button("Reset") {
+                        HapticsEngine.shared.buttonTap()
+                        selectedRaw = ""
+                    }
+                    .font(.footnote)
+                    .foregroundColor(Theme.textSecondary)
+                    Button("Done") { dismiss() }
+                        .font(.footnote.bold())
+                        .foregroundColor(Theme.colorAccent)
+                }
+                .frame(height: 32)
+
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(categories, id: \.self) { category in
+                            VStack(alignment: .leading, spacing: 8) {
+                                TrackedLabel(text: category, size: 9)
+                                let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+                                LazyVGrid(columns: columns, spacing: 8) {
+                                    ForEach(FusionToolCatalog.all.filter { $0.category == category }) { entry in
+                                        pickerTile(entry)
+                                    }
+                                }
+                            }
+                        }
+
+                        Text("Unverified ids are best-known guesses — a wrong one fails cleanly when tapped and gets corrected in an update. Tools appear on the grid in the order you add them.")
+                            .font(.system(size: 9))
+                            .foregroundColor(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.bottom, 16)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+        }
+    }
+
+    private func pickerTile(_ entry: FusionCatalogEntry) -> some View {
+        let isOn = selected.contains(entry.id)
+        return Button {
+            HapticsEngine.shared.buttonTap()
+            toggle(entry.id)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: entry.icon)
+                    .font(.system(size: 13))
+                    .foregroundColor(isOn ? .orange : Theme.textSecondary)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Theme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    if let note = entry.note {
+                        Text(note)
+                            .font(.system(size: 8))
+                            .foregroundColor(.orange.opacity(0.8))
+                    } else if !entry.verified {
+                        Text("id unverified")
+                            .font(.system(size: 8))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                }
+                Spacer()
+                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 15))
+                    .foregroundColor(isOn ? .orange : Theme.textSecondary)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 46)
+            .background(Theme.surfaceRaised.opacity(isOn ? 1 : 0.6))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(isOn ? Color.orange.opacity(0.5) : Theme.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggle(_ id: String) {
+        var ids = selected
+        if let index = ids.firstIndex(of: id) {
+            // Keep at least one tool on the grid.
+            guard ids.count > 1 else { return }
+            ids.remove(at: index)
+        } else {
+            ids.append(id)
+        }
+        selectedRaw = ids.joined(separator: ",")
     }
 }

@@ -169,17 +169,38 @@ FUSION_INPUT_ALLOWLIST = {
 }
 
 
-# Phase 17 production Fusion surface. Tool registry ids the iPad's TOOLS
-# grid may add, matched EXACTLY against TOOLS_RegID ("Transform" must not
-# substring-match "PlanarTransform"). Confidence: TextPlus/Background/
-# Merge/Transform are hardware-proven (Phase 16); the last four are the
-# best-known ids but unverified — a wrong id fails clean (resolve_error)
-# and gets corrected after the hardware pass.
+# Phase 17/18 production Fusion surface. Tool registry ids the iPad's
+# TOOLS grid may add, matched EXACTLY against the id sent ("Transform"
+# must not substring-match "PlanarTransform"). Hardware pass on Resolve
+# 21.0.0b confirmed everything in the original 16 EXCEPT PlanarTracker
+# (Resolve refuses to create it via scripting — kept listed for future
+# versions). Phase 18 expands this to the full curated catalog behind the
+# iPad's customisable grid; a wrong id still fails clean (resolve_error).
 FUSION_ADD_TOOL_IDS = (
-    "TextPlus", "Background", "Merge", "Transform",
-    "Tracker", "Blur", "Glow", "Paint", "ColorCorrector",
-    "RectangleMask", "EllipseMask", "PolylineMask",
-    "PlanarTracker", "Shadow", "TimeSpeed", "LensDistort",
+    # Generators / text
+    "Background", "FastNoise", "TextPlus", "Text3D",
+    # Composite
+    "Merge", "Dissolve",
+    # Transform
+    "Transform", "Resize", "Crop", "Letterbox", "DVE", "CameraShake",
+    # Tracking
+    "Tracker", "PlanarTracker", "PlanarTransform",
+    # Masks
+    "RectangleMask", "EllipseMask", "PolylineMask", "BSplineMask",
+    "TriangleMask", "WandMask",
+    # Blur / sharpen
+    "Blur", "DirectionalBlur", "Defocus", "Sharpen",
+    # Light / effects
+    "Glow", "SoftGlow", "Shadow", "Highlight",
+    # Colour
+    "ColorCorrector", "ColorCurves", "HueCurves", "BrightnessContrast",
+    "ColorGain", "WhiteBalance", "ChannelBooleans", "Gamut",
+    # Keying
+    "DeltaKeyer", "ChromaKeyer", "LumaKeyer", "UltraKeyer", "MatteControl",
+    # Paint / warp
+    "Paint", "GridWarp", "Displace", "CornerPositioner",
+    # Time / optics
+    "TimeSpeed", "TimeStretcher", "LensDistort", "FilmGrain",
 )
 
 # Curated per-tool parameter map for the SELECTED PARAMETER knob:
@@ -207,6 +228,10 @@ FUSION_PARAM_MAP = {
         "XBlurSize": (0.0, 100.0, 10.0, 0.5),
     },
     "Glow": {
+        "Gain": (0.0, 10.0, 1.0, 0.02),
+        "XGlowSize": (0.0, 100.0, 10.0, 0.5),
+    },
+    "SoftGlow": {
         "Gain": (0.0, 10.0, 1.0, 0.02),
         "XGlowSize": (0.0, 100.0, 10.0, 0.5),
     },
