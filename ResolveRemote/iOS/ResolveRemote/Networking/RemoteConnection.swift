@@ -376,7 +376,11 @@ final class RemoteConnection: ObservableObject {
             }
         case "preset_list":
             let presets = reply.presets ?? []
-            DispatchQueue.main.async { self.presets = presets }
+            DispatchQueue.main.async {
+                // Periodic re-listing (folder watching) only publishes when
+                // the folder actually changed.
+                if self.presets != presets { self.presets = presets }
+            }
         case "preset_applied":
             let result = PresetResult(id: UUID(), name: reply.name ?? "?",
                                       ok: reply.ok ?? false, reason: reply.reason)

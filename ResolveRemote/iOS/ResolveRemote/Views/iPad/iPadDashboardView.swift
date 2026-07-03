@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// The iPad control-surface modes. DELIVER is a Phase 13 placeholder tab
-/// (mock parity) — its controls arrive in a later phase. FUSION replaced
-/// FAIRLIGHT in Phase 15.
+/// The iPad control-surface modes (FUSION replaced FAIRLIGHT in Phase 15;
+/// the DELIVER placeholder tab was retired in the Phase 21 production pass —
+/// Resolve's Deliver page is reachable from the PAGES rail).
 enum PadMode: String, CaseIterable {
     case edit = "EDIT"
     case colour = "COLOR"
     case fusion = "FUSION"
-    case deliver = "DELIVER"
     case settings = "SETTINGS"
 
     var accent: Color {
@@ -15,14 +14,13 @@ enum PadMode: String, CaseIterable {
         case .edit:      return Theme.editAccent
         case .colour:    return Theme.colorAccent
         case .fusion:    return .orange
-        case .deliver:   return Theme.gain
         case .settings:  return Theme.textPrimary
         }
     }
 
-    /// The four tabs shown in the top bar (Settings lives in the bottom bar
-    /// and behind the gear, like the mockup).
-    static let topTabs: [PadMode] = [.edit, .colour, .fusion, .deliver]
+    /// The tabs shown in the top bar (Settings lives in the bottom bar and
+    /// behind the gear, like the mockup).
+    static let topTabs: [PadMode] = [.edit, .colour, .fusion]
 }
 
 /// Phase 13 shell, arranged like the product mockup: top tab bar with
@@ -54,8 +52,6 @@ struct iPadDashboardView: View {
                             iPadColourModeView(onBlocked: showBlocked)
                         case .fusion:
                             iPadFusionModeView(onBlocked: showBlocked)
-                        case .deliver:
-                            deliverPlaceholder
                         case .settings:
                             iPadSettingsModeView()
                         }
@@ -172,31 +168,20 @@ struct iPadDashboardView: View {
         }
     }
 
-    // MARK: - Right PAGES rail (only FUSION is wired — Phase 15; the rest
-    // stay inert until page switching is proven per page)
+    // MARK: - Right PAGES rail (fully wired via open_page — Phase 21)
 
     private var pagesRail: some View {
-        let status = connection.capabilityState.status(for: "open_page")
         let pages = ["CUT", "EDIT", "FUSION", "COLOR", "FAIRLIGHT", "DELIVER"]
         return VStack(spacing: 8) {
             TrackedLabel(text: "PAGES", size: 8)
-            CapabilityBadge(badge: status == .supported ? .supported : .experimental)
 
             ForEach(pages, id: \.self) { page in
                 railButton(page) {
-                    if page == "FUSION" {
-                        openFusionPageIfProven()
-                    } else {
-                        showBlocked("\(page.capitalized) page — switching not wired yet")
-                    }
+                    openResolvePage(page)
                 }
             }
 
             Spacer()
-
-            railButton("SHIFT") {
-                showBlocked("Shift layer — coming in a later phase")
-            }
         }
         .frame(width: 86)
         .padding(.vertical, 10)
@@ -204,6 +189,21 @@ struct iPadDashboardView: View {
         .background(Theme.surface.opacity(0.4))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.stroke, lineWidth: 1))
+    }
+
+    /// Switch Resolve to a page, gated on the probed OpenPage capability.
+    private func openResolvePage(_ page: String) {
+        guard connection.isConnected else {
+            showBlocked("\(page.capitalized) page — connect to the helper first")
+            return
+        }
+        guard connection.capabilityState.status(for: "open_page") == .supported else {
+            showBlocked("\(page.capitalized) page — OpenPage not proven on this Resolve")
+            return
+        }
+        HapticsEngine.shared.buttonTap()
+        connection.send(cmd: CommandName.openPage, mode: "system",
+                        name: page.lowercased())
     }
 
     private func railButton(_ title: String, action: @escaping () -> Void) -> some View {
@@ -224,9 +224,6 @@ struct iPadDashboardView: View {
         HStack(spacing: 0) {
             bottomItem("Dashboard", icon: "house", active: mode != .settings) {
                 select(lastWorkMode)
-            }
-            bottomItem("Macros", icon: "square.grid.2x2", active: false) {
-                showBlocked("Macros — coming in a later phase")
             }
             bottomItem("Settings", icon: "gearshape", active: mode == .settings) {
                 select(.settings)
@@ -254,21 +251,6 @@ struct iPadDashboardView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Deliver placeholder (honest, not fake controls)
-
-    private var deliverPlaceholder: some View {
-        VStack(spacing: 10) {
-            TrackedLabel(text: "DELIVER", size: 12, color: Theme.textPrimary)
-            Text("Deliver controls aren't built yet — render queue and preset actions arrive in a later phase.")
-                .font(.footnote)
-                .foregroundColor(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
-            CapabilityBadge(badge: .notWired)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     // MARK: - Helpers
 
     private func select(_ newMode: PadMode) {
@@ -281,19 +263,6 @@ struct iPadDashboardView: View {
         guard connection.isConnected else { return }
         connection.probeCapabilities()
         connection.probeFusion()
-    }
-
-    /// The one wired page control (Phase 15): send open_fusion_page only
-    /// when the Fusion probe proved it; otherwise the tap stays local.
-    private func openFusionPageIfProven() {
-        guard connection.isConnected,
-              connection.fusionCapabilityState.status(for: "open_fusion_page") == .supported
-        else {
-            showBlocked("Fusion page — probe hasn't proven page switching yet")
-            return
-        }
-        HapticsEngine.shared.buttonTap()
-        connection.openFusionPage()
     }
 
     /// Blocked-control feedback stays local — nothing is sent to the helper.

@@ -394,6 +394,26 @@ auto-refresh on node/count changes) states that and points at the
 PowerGrade-.drx Looks workflow for applying FX chains remotely. The
 capability probe reports the feature as `node_tools`.
 
+## Production pass (Phase 21)
+
+- Diagnostics (capability/Fusion probes, colour/Fusion smoke tests, raw
+  probe JSON) are hidden behind **Settings → About → Developer
+  diagnostics** (`developerMode` AppStorage). The screens still exist —
+  only the entry points are gated.
+- Every inert placeholder was removed (DELIVER tab, Macros bottom item,
+  SHIFT key, custom-shortcut strips, colour TOOLBOX, inert knobs/tiles) —
+  the production rule is: controls either work or don't exist. Healthy
+  controls no longer render a SUPPORTED chip; badges only flag problems.
+- The PAGES rail is wired for real via a new generic
+  `{"mode":"system","cmd":"open_page","name":"cut|edit|fusion|color|
+  fairlight|deliver|media"}` (reader thread, allowlisted names, replies
+  with a fusion_action_result line).
+- Looks freshness: the iPad colour tab re-lists `~/ResolveRemote/Looks`
+  on its 2s status poll (the connection publishes preset lists only on
+  change), so dropped .drx files appear without leaving the tab.
+- Colour NODE FX panel: fixed-height cards (no reflow when grades/FX
+  change) and the stepper-target node is labelled TARGET.
+
 ## Finding the Mac's IP (manual fallback)
 
 The helper menu shows it; or `ipconfig getifaddr en0`; or System

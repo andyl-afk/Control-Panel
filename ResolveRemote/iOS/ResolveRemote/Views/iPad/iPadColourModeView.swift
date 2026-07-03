@@ -13,7 +13,6 @@ struct iPadColourModeView: View {
     @State private var target: PadColourTarget = .lift
     @State private var speed: Double = 1.0
     @State private var comparing = false
-    @State private var showOverflow = false
 
     /// Mock parity: the wheel pages LIFT/GAMMA/GAIN; SAT stays a wired knob.
     private let wheelTargets: [PadColourTarget] = [.lift, .gamma, .gain]
@@ -34,10 +33,6 @@ struct iPadColourModeView: View {
             }
             .frame(maxHeight: .infinity, alignment: .top)
 
-            PadPanel(title: "TOOLBOX") {
-                toolboxChips
-            }
-
             PadPanel(title: "LOOKS (DRX)") {
                 looksStrip
             }
@@ -56,10 +51,15 @@ struct iPadColourModeView: View {
             if connection.isConnected { connection.requestNodeTools() }
         }
         .task {
-            // Same freshness poll as the iPhone colour tab (Phase 8.1).
+            // Same freshness poll as the iPhone colour tab (Phase 8.1); the
+            // Looks folder re-lists on the same cadence (cheap scan, the
+            // connection only publishes when the folder actually changed) so
+            // freshly dropped .drx files appear without leaving the tab.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
-                if connection.isConnected { requestStatus() }
+                guard connection.isConnected else { continue }
+                requestStatus()
+                connection.send(cmd: CommandName.listPresets, mode: "color")
             }
         }
         .onChange(of: connection.isConnected) { _, connected in
@@ -149,9 +149,6 @@ struct iPadColourModeView: View {
             PadPanel(title: "NODE & CLIP") {
                 nodeStepper
                 nodeClipRow
-                if showOverflow {
-                    overflowRow
-                }
             }
 
             PadPanel(title: "NODE FX (read-only)") {
@@ -165,41 +162,53 @@ struct iPadColourModeView: View {
     // MARK: Node FX inventory (Phase 19 — GetToolsInNode, read-only)
 
     private var nodeFXStrip: some View {
+        // Fixed height so changing node contents (FX added/removed in
+        // Resolve) never reflows the rest of the page.
         VStack(alignment: .leading, spacing: 6) {
-            if let inventory = connection.nodeTools, inventory.available == true,
-               let nodes = inventory.nodes, !nodes.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(nodes) { node in
-                            nodeFXCard(node, active: node.index == (inventory.node ?? -1))
+            Group {
+                if let inventory = connection.nodeTools, inventory.available == true,
+                   let nodes = inventory.nodes, !nodes.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(nodes) { node in
+                                nodeFXCard(node, target: node.index == (inventory.node ?? -1))
+                            }
                         }
                     }
+                } else {
+                    Text(connection.nodeTools?.reason
+                         ?? "Node FX loads with a clip on the Color page.")
+                        .font(.system(size: 9))
+                        .foregroundColor(Theme.textSecondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            } else {
-                Text(connection.nodeTools?.reason
-                     ?? "Node FX inventory loads with a clip on the Color page.")
-                    .font(.system(size: 9))
-                    .foregroundColor(Theme.textSecondary)
-                    .lineLimit(2)
             }
+            .frame(height: 58)
 
-            Text("The API can only read node contents — add or edit FX in Resolve (or apply a PowerGrade .drx from LOOKS).")
+            Text("Read-only — TARGET marks where the wheels and knobs land. Add or edit FX in Resolve, or apply a PowerGrade .drx from LOOKS.")
                 .font(.system(size: 8))
                 .foregroundColor(Theme.textSecondary.opacity(0.7))
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(2)
         }
     }
 
-    private func nodeFXCard(_ node: NodeToolsNode, active: Bool) -> some View {
+    private func nodeFXCard(_ node: NodeToolsNode, target: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
                 Text("N\(node.index)")
                     .font(.system(size: 9, weight: .bold).monospacedDigit())
-                    .foregroundColor(active ? .black : Theme.textPrimary)
+                    .foregroundColor(target ? .black : Theme.textPrimary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
-                    .background(active ? Theme.colorAccent : Theme.surface)
+                    .background(target ? Theme.colorAccent : Theme.surface)
                     .clipShape(Capsule())
+                if target {
+                    Text("TARGET")
+                        .font(.system(size: 7, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundColor(Theme.colorAccent)
+                }
                 if let label = node.label, !label.isEmpty {
                     Text(label)
                         .font(.system(size: 9, weight: .semibold))
@@ -212,51 +221,37 @@ struct iPadColourModeView: View {
                     .font(.system(size: 8))
                     .foregroundColor(Theme.textSecondary)
                     .lineLimit(2)
-                    .frame(maxWidth: 190, alignment: .leading)
             } else {
                 Text("no FX")
                     .font(.system(size: 8))
                     .foregroundColor(Theme.textSecondary.opacity(0.6))
             }
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Theme.surfaceRaised.opacity(active ? 1 : 0.7))
+        .padding(.top, 6)
+        .frame(width: 190, height: 58, alignment: .topLeading)
+        .background(Theme.surfaceRaised.opacity(target ? 1 : 0.7))
         .clipShape(RoundedRectangle(cornerRadius: 9))
         .overlay(RoundedRectangle(cornerRadius: 9)
-            .strokeBorder(active ? Theme.colorAccent.opacity(0.5) : Theme.stroke, lineWidth: 1))
+            .strokeBorder(target ? Theme.colorAccent.opacity(0.5) : Theme.stroke, lineWidth: 1))
     }
 
     // MARK: Adjustments — mock 2×4 grid, labels above the knobs
 
     private var adjustmentsGrid: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 16), count: 4)
+        // The five real knobs (Phase 21 production pass removed the inert
+        // Balance/Mid Detail/Highlight placeholders — balance lives on the
+        // wheel cap, the others have no scripting API).
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
         return LazyVGrid(columns: columns, spacing: 18) {
             knob("CONTRAST", param: "contrast", value: colorState?.contrast, accent: Theme.knobNeutral)
             knob("PIVOT", param: "pivot", value: colorState?.pivot, accent: Theme.knobNeutral)
             knob("SATURATION", param: "sat", value: colorState?.sat, accent: Theme.gamma)
-            inertKnob(
-                "BALANCE",
-                accent: Theme.gamma,
-                note: "on wheel cap",
-                message: "Balance — drag the wheel cap trackball"
-            )
             knob("TEMP", param: "temp", value: colorState?.temp,
                  accent: Theme.tempCool, accentSecondary: Theme.tempWarm, note: "CDL approx")
             knob("TINT", param: "tint", value: colorState?.tint,
                  accent: Theme.tintAccent, note: "CDL approx")
-            inertKnob(
-                "MID DETAIL",
-                accent: Theme.knobNeutral,
-                note: "no scripting API",
-                message: "Mid Detail — Resolve's API can't reach it"
-            )
-            inertKnob(
-                "HIGHLIGHT",
-                accent: Theme.knobNeutral,
-                note: "no scripting API",
-                message: "Highlight — Resolve's API can't reach it"
-            )
         }
     }
 
@@ -298,29 +293,6 @@ struct iPadColourModeView: View {
         .frame(maxWidth: .infinity)
         .opacity(isLive ? 1 : 0.4)
         .disabled(!isLive)
-    }
-
-    /// Knob-shaped but inert (mock geometry): the dial is disabled, any tap
-    /// on the cluster raises the local toast — nothing is ever sent.
-    private func inertKnob(
-        _ label: String,
-        accent: Color,
-        note: String,
-        message: String
-    ) -> some View {
-        VStack(spacing: 6) {
-            knobLabel(label)
-
-            DialView(style: .vertical, accent: accent, onTicks: { _ in })
-                .frame(width: 84, height: 84)
-                .disabled(true)
-                .opacity(0.35)
-
-            knobFooter(value: "—", note: note)
-        }
-        .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .onTapGesture { onBlocked(message) }
     }
 
     private func knobLabel(_ label: String) -> some View {
@@ -389,13 +361,9 @@ struct iPadColourModeView: View {
     }
 
     private var nodeClipRow: some View {
+        // Production pass (Phase 21): only real controls remain — bypass
+        // (hold to compare), reset trims on the target node, grab still.
         HStack(spacing: 8) {
-            nodeTile("PREV", "CLIP", status: .missing, wired: false,
-                     blocked: "Prev Clip — not wired yet")
-            nodeTile("NEXT", "CLIP", status: .missing, wired: false,
-                     blocked: "Next Clip — not wired yet")
-            nodeTile("ADD", "NODE", status: caps.status(for: "node_graph"), wired: false,
-                     blocked: "Add Node — not wired yet")
             bypassTile
             nodeTile("RESET", "NODE", status: cdlStatus, wired: true,
                      blocked: "Reset Node — colour unavailable",
@@ -403,23 +371,9 @@ struct iPadColourModeView: View {
                          HapticsEngine.shared.heavyBump()
                          connection.send(cmd: CommandName.colorReset, mode: "color", target: "all")
                      })
-            moreTile
-        }
-    }
-
-    private var overflowRow: some View {
-        HStack(spacing: 8) {
             nodeTile("GRAB", "STILL", status: caps.status(for: "grab_still"), wired: true,
-                     blocked: "Grab Still — capability unknown (probe Resolve)",
+                     blocked: "Grab Still — capability unknown yet",
                      action: { connection.send(cmd: CommandName.grabStill, mode: "color") })
-            nodeTile("SET", "LUT", status: caps.status(for: "set_lut"), wired: false,
-                     blocked: "Set LUT — not wired yet")
-            nodeTile("MAGIC", "MASK", status: caps.status(for: "magic_mask"), wired: false,
-                     blocked: "Magic Mask — not wired yet")
-            nodeTile("SMART", "REFRAME", status: caps.status(for: "smart_reframe"), wired: false,
-                     blocked: "Smart Reframe — not wired yet")
-            nodeTile("RESET", "GRADE", status: caps.status(for: "reset_grades"), wired: false,
-                     blocked: "Reset Grade — dangerous, not wired", dangerous: true)
         }
     }
 
@@ -529,58 +483,11 @@ struct iPadColourModeView: View {
             .foregroundColor(comparing ? .black : (isLive ? Theme.textPrimary : Theme.textSecondary))
     }
 
-    private var moreTile: some View {
-        Button {
-            HapticsEngine.shared.buttonTap()
-            withAnimation(.easeInOut(duration: 0.15)) { showOverflow.toggle() }
-        } label: {
-            Text("…")
-                .font(.title3.weight(.semibold))
-                .foregroundColor(Theme.textPrimary)
-                .frame(width: 48, height: 56)
-                .background(Theme.surfaceRaised)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: Toolbox — full-width chip strip (all inert placeholders)
-
-    private var toolboxChips: some View {
-        HStack(spacing: 8) {
-            ForEach(["QUALIFIER", "WINDOW", "TRACKER", "KEYFRAME", "FX"], id: \.self) { tool in
-                toolChip(tool) {
-                    onBlocked("\(tool.capitalized) — not wired yet")
-                }
-            }
-            toolChip("…") {
-                onBlocked("More colour tools — coming in a later phase")
-            }
-        }
-    }
-
-    private func toolChip(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            TrackedLabel(text: title, size: 8)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .padding(.horizontal, 12)
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .background(Theme.surfaceRaised)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: Looks (wired apply_preset — existing DRX path)
 
     private var looksStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                CapabilityBadge(badge: caps.status(for: "apply_drx") == .supported ? .supported : .experimental)
                 if let presets = connection.presets, !presets.isEmpty {
                     ForEach(presets, id: \.self) { name in
                         Button {

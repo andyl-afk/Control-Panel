@@ -9,13 +9,14 @@ struct iPadSettingsModeView: View {
 
     @State private var showFullCapabilities = false
     @State private var showFullFusionCapabilities = false
+    @AppStorage("developerMode") private var developerMode = false
 
     private var caps: CapabilityState? { connection.capabilityState }
     private var fusionCaps: FusionCapabilityState? { connection.fusionCapabilityState }
 
     var body: some View {
-        // Three columns echoing the mockup's settings grid: connection &
-        // preferences | diagnostics | layout editor (Phase 14) + raw JSON.
+        // Connection & preferences | status summary; the raw-JSON third
+        // column only exists in developer mode (Phase 21).
         HStack(alignment: .top, spacing: 16) {
             // The phone Settings view is reused wholesale — same connection
             // fields, Bonjour list, haptics, and diagnostics entry point.
@@ -25,8 +26,10 @@ struct iPadSettingsModeView: View {
             diagnosticsColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            thirdColumn
-                .frame(width: 300)
+            if developerMode {
+                thirdColumn
+                    .frame(width: 300)
+            }
         }
         .sheet(isPresented: $showFullCapabilities) {
             CapabilityProbeView()
@@ -38,26 +41,10 @@ struct iPadSettingsModeView: View {
         }
     }
 
-    /// The mockup's SHORTCUT LAYOUT column — real editor lands in Phase 14.
+    /// Raw probe JSON — developer mode only.
     private var thirdColumn: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 12) {
-                card("SHORTCUT LAYOUT") {
-                    Text("Assignable shortcut buttons per page — coming in Phase 14.")
-                        .font(.caption)
-                        .foregroundColor(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    CapabilityBadge(badge: .notWired)
-                }
-
-                card("GENERAL") {
-                    Text("Jog sensitivity, shuttle max speed, and send rate preferences — coming in Phase 14.")
-                        .font(.caption)
-                        .foregroundColor(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    CapabilityBadge(badge: .notWired)
-                }
-
                 if let json = connection.capabilityJSON {
                     card("LAST CAPABILITY JSON") {
                         Text(json)
@@ -120,43 +107,45 @@ struct iPadSettingsModeView: View {
                     }
                 }
 
-                HStack(spacing: 10) {
-                    actionButton("Probe Resolve", prominent: true, enabled: connection.isConnected) {
-                        connection.probeCapabilities()
-                    }
-                    actionButton("Copy Capability JSON", enabled: connection.capabilityJSON != nil) {
-                        UIPasteboard.general.string = connection.capabilityJSON ?? ""
-                    }
-                    actionButton("Full Feature List", enabled: true) {
-                        showFullCapabilities = true
-                    }
-                }
-
-                card("FUSION (PHASE 15)") {
-                    row("Fusion object", yesNo(fusionCaps?.fusion_object))
-                    row("Comps on clip", fusionCaps?.comp_count.map(String.init) ?? "—")
-                    row("Tools in comp", fusionCaps?.tool_count.map(String.init) ?? "—")
-                    if let receivedAt = connection.fusionCapabilityReceivedAt {
-                        HStack {
-                            Text("Probed").font(.footnote).foregroundColor(Theme.textSecondary)
-                            Spacer()
-                            Text(receivedAt, style: .relative)
-                                .font(.footnote.monospacedDigit())
-                                .foregroundColor(Theme.textSecondary)
-                            Text("ago").font(.footnote).foregroundColor(Theme.textSecondary)
+                if developerMode {
+                    HStack(spacing: 10) {
+                        actionButton("Probe Resolve", prominent: true, enabled: connection.isConnected) {
+                            connection.probeCapabilities()
+                        }
+                        actionButton("Copy Capability JSON", enabled: connection.capabilityJSON != nil) {
+                            UIPasteboard.general.string = connection.capabilityJSON ?? ""
+                        }
+                        actionButton("Full Feature List", enabled: true) {
+                            showFullCapabilities = true
                         }
                     }
-                }
 
-                HStack(spacing: 10) {
-                    actionButton("Probe Fusion", prominent: true, enabled: connection.isConnected) {
-                        connection.probeFusion()
+                    card("FUSION") {
+                        row("Fusion object", yesNo(fusionCaps?.fusion_object))
+                        row("Comps on clip", fusionCaps?.comp_count.map(String.init) ?? "—")
+                        row("Tools in comp", fusionCaps?.tool_count.map(String.init) ?? "—")
+                        if let receivedAt = connection.fusionCapabilityReceivedAt {
+                            HStack {
+                                Text("Probed").font(.footnote).foregroundColor(Theme.textSecondary)
+                                Spacer()
+                                Text(receivedAt, style: .relative)
+                                    .font(.footnote.monospacedDigit())
+                                    .foregroundColor(Theme.textSecondary)
+                                Text("ago").font(.footnote).foregroundColor(Theme.textSecondary)
+                            }
+                        }
                     }
-                    actionButton("Copy Fusion JSON", enabled: connection.fusionCapabilityJSON != nil) {
-                        UIPasteboard.general.string = connection.fusionCapabilityJSON ?? ""
-                    }
-                    actionButton("Full Fusion List", enabled: true) {
-                        showFullFusionCapabilities = true
+
+                    HStack(spacing: 10) {
+                        actionButton("Probe Fusion", prominent: true, enabled: connection.isConnected) {
+                            connection.probeFusion()
+                        }
+                        actionButton("Copy Fusion JSON", enabled: connection.fusionCapabilityJSON != nil) {
+                            UIPasteboard.general.string = connection.fusionCapabilityJSON ?? ""
+                        }
+                        actionButton("Full Fusion List", enabled: true) {
+                            showFullFusionCapabilities = true
+                        }
                     }
                 }
             }

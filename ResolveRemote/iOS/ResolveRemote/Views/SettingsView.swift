@@ -19,6 +19,9 @@ struct SettingsView: View {
     @AppStorage("preferredServiceName") private var preferredServiceName = ""
     // Read by HapticsEngine.
     @AppStorage("hapticsEnabled") private var hapticsEnabled = true
+    /// Production default: diagnostics (probes, smoke tests) stay hidden
+    /// unless explicitly enabled from the About section.
+    @AppStorage("developerMode") private var developerMode = false
     @AppStorage("hapticIntensity") private var hapticIntensity = "medium"
     @AppStorage("wheelTextureEnabled") private var wheelTextureEnabled = true
     @FocusState private var focusedField: Field?
@@ -154,7 +157,65 @@ struct SettingsView: View {
                     .disabled(!hapticsEnabled)
                 }
 
-                section("DIAGNOSTICS") {
+                if developerMode {
+                    diagnosticsSection
+                }
+
+                section("ABOUT") {
+                    HStack {
+                        Text("Resolve Remote")
+                            .font(.footnote)
+                            .foregroundColor(Theme.textPrimary)
+                        Spacer()
+                        Text(versionString)
+                            .font(.footnote.monospacedDigit())
+                            .foregroundColor(Theme.textSecondary)
+                    }
+
+                    Toggle(isOn: $developerMode) {
+                        Text("Developer diagnostics")
+                            .font(.footnote)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    .tint(Theme.colorAccent)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    focusedField = nil
+                }
+            }
+        }
+        // Browse only while this tab is visible.
+        .onAppear { browser.acquire("settings") }
+        .onDisappear { browser.release("settings") }
+        .sheet(isPresented: $showCapabilities) {
+            CapabilityProbeView()
+                .environmentObject(connection)
+        }
+        .sheet(isPresented: $showSmokeTests) {
+            ColorSmokeTestView()
+                .environmentObject(connection)
+        }
+        .sheet(isPresented: $showFusionCapabilities) {
+            FusionCapabilitiesView()
+                .environmentObject(connection)
+        }
+        .sheet(isPresented: $showFusionSmokeTests) {
+            FusionSmokeTestView()
+                .environmentObject(connection)
+        }
+    }
+
+    /// Probes and smoke tests — developer mode only (Phase 21).
+    private var diagnosticsSection: some View {
+        section("DIAGNOSTICS") {
                     Button {
                         showCapabilities = true
                     } label: {
@@ -214,50 +275,6 @@ struct SettingsView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                }
-
-                section("ABOUT") {
-                    HStack {
-                        Text("Resolve Remote")
-                            .font(.footnote)
-                            .foregroundColor(Theme.textPrimary)
-                        Spacer()
-                        Text(versionString)
-                            .font(.footnote.monospacedDigit())
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                }
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    focusedField = nil
-                }
-            }
-        }
-        // Browse only while this tab is visible.
-        .onAppear { browser.acquire("settings") }
-        .onDisappear { browser.release("settings") }
-        .sheet(isPresented: $showCapabilities) {
-            CapabilityProbeView()
-                .environmentObject(connection)
-        }
-        .sheet(isPresented: $showSmokeTests) {
-            ColorSmokeTestView()
-                .environmentObject(connection)
-        }
-        .sheet(isPresented: $showFusionCapabilities) {
-            FusionCapabilitiesView()
-                .environmentObject(connection)
-        }
-        .sheet(isPresented: $showFusionSmokeTests) {
-            FusionSmokeTestView()
-                .environmentObject(connection)
         }
     }
 

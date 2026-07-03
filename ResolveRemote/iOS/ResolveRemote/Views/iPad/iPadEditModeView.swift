@@ -1,10 +1,9 @@
 import SwiftUI
 
 /// iPad Edit mode, arranged like the mockup: a narrow JOG WHEEL panel on
-/// the left (plain dark hardware wheel — no accent ring), a wide column of
-/// TRANSPORT + EDIT SHORTCUTS, and the numbered custom-shortcut strip along
-/// the bottom. Everything live rides the existing keyboard-path commands;
-/// the custom strip is inert until Phase 14.
+/// the left (plain dark hardware wheel — no accent ring) and a wide column
+/// of TRANSPORT + EDIT SHORTCUTS. Everything rides the existing
+/// keyboard-path commands.
 struct iPadEditModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
     var onBlocked: (String) -> Void
@@ -24,10 +23,6 @@ struct iPadEditModeView: View {
                     .frame(maxWidth: .infinity)
             }
             .frame(maxHeight: .infinity, alignment: .top)
-
-            PadPanel(title: "CUSTOM SHORTCUTS") {
-                CustomShortcutStrip(onBlocked: onBlocked)
-            }
         }
     }
 

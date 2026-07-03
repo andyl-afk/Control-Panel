@@ -72,9 +72,11 @@ struct ControlSurfaceButton: View {
     private var isLive: Bool { wired && status == .supported }
 
     private var badges: [SurfaceBadge] {
+        // Production rule (Phase 21): a healthy control shows no chip at
+        // all — badges only flag problems or danger.
         var result: [SurfaceBadge] = []
         switch status {
-        case .supported:         result.append(.supported)
+        case .supported:         break
         case .unknown, .missing: result.append(.experimental)
         case .unsupported:       result.append(.unsupported)
         case .error:             result.append(.error)

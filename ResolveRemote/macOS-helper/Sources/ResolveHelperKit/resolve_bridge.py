@@ -889,6 +889,44 @@ class ColorEngine:
             log("fusion probe: connected=%s page=%s comps=%s tools=%s"
                 % (connected, current_page, comp_count, tool_count))
 
+    # Pages OpenPage accepts; the PAGES rail sends these (Phase 21).
+    RESOLVE_PAGES = ("media", "cut", "edit", "fusion", "color", "fairlight",
+                     "deliver")
+
+    def handle_open_page(self, cmd):
+        """Generic page switch (Phase 21): the PAGES rail. Same contract as
+        open_fusion_page, any allowlisted page name."""
+        name = str(cmd.get("name") or "").strip().lower()
+        if name not in self.RESOLVE_PAGES:
+            emit_fusion_result("open_page", False, reason="invalid_page",
+                               message="Unknown page %r" % name)
+            return
+        with self.lock:
+            if not self.session.connect():
+                emit_fusion_result("open_page", False, reason="no_resolve",
+                                   message=self.session.reason)
+                return
+            resolve = self.session.resolve
+            if not has_method(resolve, "OpenPage"):
+                emit_fusion_result(
+                    "open_page", False, reason="unsupported",
+                    message="This Resolve does not expose OpenPage to scripting")
+                return
+            try:
+                result = resolve.OpenPage(name)
+                page = safe_call(lambda: resolve.GetCurrentPage())
+                ok = bool(result) or page == name
+                emit_fusion_result(
+                    "open_page", ok, page=page,
+                    reason=None if ok else "resolve_error",
+                    message=None if ok else "Resolve refused to open the %s page" % name)
+                log("open_page: %s ok=%s" % (name, ok))
+            except Exception as exc:
+                self.session.resolve = None
+                emit_fusion_result("open_page", False,
+                                   reason="resolve_error", message=str(exc))
+                log("open_page failed: %s" % exc)
+
     def handle_open_fusion_page(self, cmd):
         """The single mutating Fusion action this phase: switch Resolve to
         the Fusion page. Success is verified by re-reading GetCurrentPage."""
@@ -2318,6 +2356,9 @@ def main():
                 # Read-only node-FX inventory (Phase 19): instant, never
                 # queued behind grading batches.
                 engine.handle_node_tools(cmd)
+            elif cmd.get("cmd") == "open_page":
+                # Generic page switch for the PAGES rail (Phase 21).
+                engine.handle_open_page(cmd)
             elif cmd.get("cmd") == "fusion_probe":
                 # Fusion introspection (Phase 15): same contract as the
                 # capability probe — immediate, non-mutating.

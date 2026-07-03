@@ -268,6 +268,8 @@ enum CommandName {
 
     // System mode (mode: "system")
     static let capabilityProbe = "capability_probe"
+    // Phase 21 — generic Resolve page switch (the PAGES rail).
+    static let openPage = "open_page"
 
     // Fusion mode (mode: "fusion") — Phase 15. fusion_probe is pure
     // introspection; open_fusion_page switches Resolve to the Fusion page.

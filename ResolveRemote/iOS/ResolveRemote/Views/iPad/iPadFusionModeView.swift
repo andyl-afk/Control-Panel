@@ -165,9 +165,6 @@ struct iPadFusionModeView: View {
                 .frame(width: 380)
             }
 
-            PadPanel(title: "CUSTOM SHORTCUTS", centered: true) {
-                CustomShortcutStrip(onBlocked: onBlocked)
-            }
         }
         .onAppear { refresh() }
         .onChange(of: connection.isConnected) { _, connected in
@@ -238,14 +235,6 @@ struct iPadFusionModeView: View {
 
             Spacer()
 
-            headerButton("Probe Fusion") {
-                guard connection.isConnected else {
-                    onBlocked("Probe Fusion — connect to the helper first")
-                    return
-                }
-                HapticsEngine.shared.buttonTap()
-                connection.probeFusion()
-            }
             headerButton("Open Fusion Page") {
                 guard connection.isConnected,
                       caps.status(for: "open_fusion_page") == .supported else {
