@@ -14,7 +14,8 @@ struct FusionCatalogEntry: Identifiable {
 }
 
 /// The curated catalog behind the customisable TOOLS grid. Hardware pass
-/// on Resolve 21.0.0b verified the whole catalog minus the planar tools.
+/// on Resolve 21.0.0b AND 21.0.2 verified the whole catalog minus the
+/// planar tools (confirmed not creatable via scripting in Resolve 21).
 enum FusionToolCatalog {
     static let all: [FusionCatalogEntry] = [
         // Generators / text
@@ -35,9 +36,9 @@ enum FusionToolCatalog {
         // Tracking
         .init(id: "Tracker", label: "Tracker", icon: "scope", category: "TRACKING", verified: true),
         .init(id: "PlanarTracker", label: "Planar Tracker", icon: "square.dashed", category: "TRACKING", verified: false,
-              note: "not scriptable on 21.0b"),
+              note: "not scriptable in 21.x"),
         .init(id: "PlanarTransform", label: "Planar Transform", icon: "skew", category: "TRACKING", verified: false,
-              note: "not scriptable on 21.0b"),
+              note: "not scriptable in 21.x"),
         // Masks
         .init(id: "RectangleMask", label: "Rectangle", icon: "rectangle", category: "MASKS", verified: true),
         .init(id: "EllipseMask", label: "Ellipse", icon: "circle", category: "MASKS", verified: true),

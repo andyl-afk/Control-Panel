@@ -172,10 +172,10 @@ FUSION_INPUT_ALLOWLIST = {
 # Phase 17/18 production Fusion surface. Tool registry ids the iPad's
 # TOOLS grid may add, matched EXACTLY against the id sent ("Transform"
 # must not substring-match "PlanarTransform"). Hardware passes on Resolve
-# 21.0.0b confirmed the whole catalog EXCEPT PlanarTracker and
-# PlanarTransform (Resolve refuses to create the planar tools via
-# scripting — kept listed for future versions). A wrong id still fails
-# clean (resolve_error).
+# 21.0.0b AND 21.0.2 confirmed the whole catalog EXCEPT PlanarTracker and
+# PlanarTransform (Resolve 21 refuses to create the planar tools via
+# scripting on both beta and release — kept listed for future major
+# versions). A wrong id still fails clean (resolve_error).
 FUSION_ADD_TOOL_IDS = (
     # Generators / text
     "Background", "FastNoise", "TextPlus", "Text3D",
