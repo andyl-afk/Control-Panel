@@ -324,6 +324,53 @@ the CLI prints `[fusion-action]` lines. The smoke panel is deliberately
 NOT wired into the Fusion mode tab — diagnostics only until the polished
 surface phase.
 
+## Fusion control surface (Phase 17)
+
+The iPad Fusion tab is the wired mockup surface. Design rules:
+
+- **The iPad owns tool selection by name.** All param/XY commands carry
+  `tool_name` and use GetToolList name lookup (the Phase-16-proven path);
+  `fusion_select_tool` (SetActiveTool) is best-effort sugar only.
+- **Two routing lanes** in the sidecar's `read_stdin`: `fusion_param_delta`
+  / `fusion_xy_delta` / `fusion_param_reset` go to the 30 Hz **batch
+  worker** (coalesced per tool+param, one SetInput each, one `fusion_state`
+  per applied batch — no per-tick results); every other `mode:"fusion"`
+  command answers instantly on the reader thread.
+- **Curated param map** (`FUSION_PARAM_MAP`): only inputs with well-known
+  ids, each with (min, max, default, step). The sidecar refuses to set a
+  param whose GetInput isn't numeric — never blind. Unmapped tools show
+  "no mapped parameters" in the UI. XY drives `Center` on Transform /
+  Merge / Text+ only (`FUSION_XY_MAP`), clamped ±0.5 outside the frame.
+- **Tool allowlist** (`FUSION_ADD_TOOL_IDS`), exact RegID match: proven —
+  TextPlus, Background, Merge, Transform; high-confidence — Tracker, Blur,
+  Glow, Paint, ColorCorrector, RectangleMask, EllipseMask, PolylineMask;
+  unverified (flagged in the UI) — PlanarTracker, Shadow, TimeSpeed,
+  LensDistort. Wrong ids fail clean (`resolve_error`) and get corrected
+  after a hardware pass.
+
+Reader-thread commands: `fusion_status` (→ `fusion_state`),
+`fusion_add_tool` (confirm auto-sent — the tap is the intent),
+`fusion_select_tool`, `fusion_load_comp` (index), `fusion_delete_comp`
+(index + confirm + a real destructive dialog), `fusion_list_comp_files`
+(→ `fusion_comp_files`), `fusion_import_comp_file` (basename,
+traversal-guarded, confirm), plus the reused Phase-16 `fusion_add_comp` /
+`fusion_rename_comp` / `fusion_export_comp` (export now auto-names into
+the comps folder when no path is given).
+
+`fusion_state` (the Fusion analogue of `color_state`): `{available,
+reason, current_page, clip, comp_count, comp_names, active_tool{name,
+type}, tool{name,type}, params:[{id, value, min, max, default}],
+center:[x,y]?}` — `tool` is the param target (requested `tool_name` or the
+comp's ActiveTool); `center` present only when the tool has a mapped XY
+input (gates the pad). Published on `RemoteConnection.fusionState`
+(change-only, like colorState); the iPad polls `fusion_status` every 2 s
+while the tab is visible.
+
+**Comps folder** (`COMPS_DIR`, default `~/ResolveRemote/Comps`, env
+override `RESOLVE_REMOTE_COMPS_DIR` for tests): the folder is the UI,
+exactly like Looks — `.comp` files become the MACROS/COMP PRESETS chips
+(tap = import), and Export writes auto-named files there.
+
 ## Finding the Mac's IP (manual fallback)
 
 The helper menu shows it; or `ipconfig getifaddr en0`; or System

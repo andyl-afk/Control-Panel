@@ -60,6 +60,9 @@ final class RemoteConnection: ObservableObject {
     /// plus a Phase 16 rolling log (newest first) for the smoke-test panel.
     @Published private(set) var lastFusionActionResult: ColorActionResult?
     @Published private(set) var fusionActionLog: [ColorActionResult] = []
+    /// Phase 17 — live Fusion surface state and the Mac's comp preset files.
+    @Published private(set) var fusionState: FusionState?
+    @Published private(set) var fusionCompFiles: [String]?
 
     var isConnected: Bool { state == .connected }
     /// True when there is a remembered endpoint a Retry can go back to.
@@ -381,6 +384,18 @@ final class RemoteConnection: ObservableObject {
                 self.capabilityJSON = json
                 self.capabilityReceivedAt = Date()
             }
+        case "fusion_state":
+            guard let state = try? decoder.decode(FusionState.self, from: lineData) else { return }
+            DispatchQueue.main.async {
+                // Polling re-sends identical states — only publish changes.
+                if self.fusionState != state {
+                    self.fusionState = state
+                }
+            }
+        case "fusion_comp_files":
+            guard let compFiles = try? decoder.decode(FusionCompFiles.self, from: lineData) else { return }
+            let files = compFiles.files ?? []
+            DispatchQueue.main.async { self.fusionCompFiles = files }
         case "fusion_capability_state":
             guard let caps = try? decoder.decode(FusionCapabilityState.self, from: lineData) else { return }
             let json = String(data: lineData, encoding: .utf8)

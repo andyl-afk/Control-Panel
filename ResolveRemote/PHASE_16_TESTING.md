@@ -49,7 +49,9 @@ target, then commit `project.pbxproj`.
 
 ## Export / import (explicit paths)
 
-- [ ] 17. Export Comp with an empty path → `missing_path`.
+- [ ] 17. Export Comp with an empty path → auto-named .comp appears in
+        `~/ResolveRemote/Comps` (behaviour changed in Phase 17; it was a
+        missing-path error when Phase 16 first shipped).
 - [ ] 18. Export Comp to a folder that doesn't exist → `invalid_path`.
 - [ ] 19. Export Comp to a valid path → ok:true and the .comp file exists
         (or a clear `resolve_error`).

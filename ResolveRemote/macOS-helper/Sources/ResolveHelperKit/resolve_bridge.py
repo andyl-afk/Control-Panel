@@ -83,6 +83,13 @@ NODE_INDEX = "1"
 # management UI — the sidecar re-scans it on every list request.
 LOOKS_DIR = os.path.expanduser("~/ResolveRemote/Looks")
 
+# Fusion comp presets (Phase 17): every .comp file in this folder is an
+# importable preset chip on the iPad, and parameterless exports auto-name
+# into it — same folder-is-the-UI rule as LOOKS_DIR. Env override exists
+# so the test harness can sandbox it.
+COMPS_DIR = (os.environ.get("RESOLVE_REMOTE_COMPS_DIR")
+             or os.path.expanduser("~/ResolveRemote/Comps"))
+
 # 0.435 is Resolve's default contrast pivot.
 USER_DEFAULTS = {
     "lift_m": 0.0,
@@ -160,6 +167,63 @@ FUSION_INPUT_ALLOWLIST = {
     "Size": {"kinds": ("Transform",), "coerce": "float"},
     "Center": {"kinds": ("Transform",), "coerce": "point"},
 }
+
+
+# Phase 17 production Fusion surface. Tool registry ids the iPad's TOOLS
+# grid may add, matched EXACTLY against TOOLS_RegID ("Transform" must not
+# substring-match "PlanarTransform"). Confidence: TextPlus/Background/
+# Merge/Transform are hardware-proven (Phase 16); the last four are the
+# best-known ids but unverified — a wrong id fails clean (resolve_error)
+# and gets corrected after the hardware pass.
+FUSION_ADD_TOOL_IDS = (
+    "TextPlus", "Background", "Merge", "Transform",
+    "Tracker", "Blur", "Glow", "Paint", "ColorCorrector",
+    "RectangleMask", "EllipseMask", "PolylineMask",
+    "PlanarTracker", "Shadow", "TimeSpeed", "LensDistort",
+)
+
+# Curated per-tool parameter map for the SELECTED PARAMETER knob:
+# {regid: {input_id: (min, max, default, step-per-tick)}}. Deliberately
+# small and honest — only inputs with well-known ids; anything else shows
+# "no mapped parameters" instead of guessing.
+FUSION_PARAM_MAP = {
+    "Transform": {
+        "Size": (0.0, 5.0, 1.0, 0.01),
+        "Angle": (-360.0, 360.0, 0.0, 1.0),
+    },
+    "Merge": {
+        "Blend": (0.0, 1.0, 1.0, 0.005),
+        "Size": (0.0, 5.0, 1.0, 0.01),
+    },
+    "TextPlus": {
+        "Size": (0.0, 0.5, 0.08, 0.001),
+    },
+    "Background": {
+        "TopLeftRed": (0.0, 1.0, 0.0, 0.005),
+        "TopLeftGreen": (0.0, 1.0, 0.0, 0.005),
+        "TopLeftBlue": (0.0, 1.0, 0.0, 0.005),
+    },
+    "Blur": {
+        "XBlurSize": (0.0, 100.0, 10.0, 0.5),
+    },
+    "Glow": {
+        "Gain": (0.0, 10.0, 1.0, 0.02),
+        "XGlowSize": (0.0, 100.0, 10.0, 0.5),
+    },
+    "ColorCorrector": {
+        "MasterRGBGain": (0.0, 2.0, 1.0, 0.005),
+    },
+}
+
+# Which tools the XY CONTROL pad drives (regid -> point input id), and the
+# per-axis clamp (allows moving content off-screen, but not into orbit).
+FUSION_XY_MAP = {"Transform": "Center", "Merge": "Center", "TextPlus": "Center"}
+CLAMP_FUSION_CENTER = (-0.5, 1.5)
+FUSION_CENTER_DEFAULT = [0.5, 0.5]
+
+# Fusion knob/XY commands that ride the rate-limited batch worker instead
+# of the instant reader thread.
+FUSION_BATCHED_CMDS = ("fusion_param_delta", "fusion_xy_delta", "fusion_param_reset")
 
 
 def has_method(obj, name):
@@ -760,6 +824,14 @@ class ColorEngine:
             "fusion_add_tool_test": self._fusion_cmd_add_tool_test,
             "fusion_set_input_test": self._fusion_cmd_set_input_test,
             "fusion_delete_comp_status": self._fusion_cmd_delete_comp_status,
+            # Phase 17 — production Fusion surface
+            "fusion_status": self._fusion_cmd_status,
+            "fusion_add_tool": self._fusion_cmd_add_tool,
+            "fusion_select_tool": self._fusion_cmd_select_tool,
+            "fusion_load_comp": self._fusion_cmd_load_comp,
+            "fusion_delete_comp": self._fusion_cmd_delete_comp,
+            "fusion_list_comp_files": self._fusion_cmd_list_comp_files,
+            "fusion_import_comp_file": self._fusion_cmd_import_comp_file,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -955,16 +1027,13 @@ class ColorEngine:
 
     def _fusion_cmd_export_comp(self, cmd):
         path = str(cmd.get("export_path") or "").strip()
-        if not path:
-            emit_fusion_result("fusion_export_comp", False, reason="missing_path",
-                               message="fusion_export_comp requires export_path")
-            return
-        path = os.path.expanduser(path)
-        parent = os.path.dirname(path) or "."
-        if not os.path.isdir(parent):
-            emit_fusion_result("fusion_export_comp", False, reason="invalid_path",
-                               message="Parent folder does not exist: %s" % parent)
-            return
+        if path:
+            path = os.path.expanduser(path)
+            parent = os.path.dirname(path) or "."
+            if not os.path.isdir(parent):
+                emit_fusion_result("fusion_export_comp", False, reason="invalid_path",
+                                   message="Parent folder does not exist: %s" % parent)
+                return
         resolve, _, item, _, _, reason = self._fusion_objects()
         if resolve is None:
             emit_fusion_result("fusion_export_comp", False, reason="no_resolve",
@@ -986,6 +1055,15 @@ class ColorEngine:
             emit_fusion_result("fusion_export_comp", False, reason="invalid_index",
                                message="index must be a number")
             return
+        if not path:
+            # No path (Phase 17): auto-name into the comps folder so the
+            # iPad never needs a Mac path typed in.
+            names = self._fusion_comp_names(item) or []
+            base = names[index - 1] if 1 <= index <= len(names) else "Comp%d" % index
+            safe = "".join(ch if ch.isalnum() or ch in "-_ " else "_"
+                           for ch in base).strip() or "Comp"
+            path = os.path.join(
+                COMPS_DIR, "%s_%s.comp" % (safe, time.strftime("%Y%m%d-%H%M%S")))
         result = item.ExportFusionComp(path, index)
         ok = bool(result)
         log("fusion_export_comp: index=%d path=%s ok=%s" % (index, path, ok))
@@ -1227,6 +1305,393 @@ class ColorEngine:
                 return None, "%r is not an \"x,y\" point" % text
         return None, "No coercion rule for %s" % kind
 
+    # -- Fusion control surface (Phase 17) ------------------------------------
+    #
+    # The wired iPad Fusion tab. The iPad owns tool selection by NAME (the
+    # path Phase 16 proved); SetActiveTool is best-effort sugar. Knob/XY
+    # deltas ride the 30Hz batch worker (coalesced per tool+param); each
+    # applied batch emits one fusion_state, like color_state for colour.
+
+    @staticmethod
+    def _read_center(tool, input_name):
+        """A point input's [x, y], tolerating Lua-style {1:x, 2:y} tables.
+        None when the value isn't a readable point."""
+        value = safe_call(lambda: tool.GetInput(input_name))
+        if isinstance(value, dict):
+            value = [value.get(1), value.get(2)]
+        if (isinstance(value, (list, tuple)) and len(value) >= 2
+                and all(isinstance(v, (int, float)) for v in value[:2])):
+            return [float(value[0]), float(value[1])]
+        return None
+
+    def _fusion_tool_by_name(self, comp, tool_name):
+        for tool in self._fusion_tools(comp) or []:
+            if self._tool_entry(tool)["name"] == tool_name:
+                return tool
+        return None
+
+    def _emit_fusion_state(self, resolve, item, comp, tool=None, reason=None):
+        """One fusion_state line: comp context + the target tool's curated
+        params for the iPad surface. `tool` is the param target (falls back
+        to the comp's ActiveTool)."""
+        available = comp is not None
+        clip = None
+        if item is not None and has_method(item, "GetName"):
+            clip = safe_call(lambda: item.GetName())
+        payload = {
+            "v": 1,
+            "type": "fusion_state",
+            "available": available,
+            "reason": None if available else (reason or "No Fusion comp available"),
+            "current_page": (safe_call(lambda: resolve.GetCurrentPage())
+                             if resolve is not None else None),
+            "clip": clip,
+            "comp_count": self._fusion_comp_count(item),
+            "comp_names": self._fusion_comp_names(item),
+        }
+        active_entry = None
+        target = tool
+        if comp is not None:
+            missing = object()
+            active = safe_call(lambda: getattr(comp, "ActiveTool", None), missing)
+            if active is not missing and active is not None:
+                active_entry = self._tool_entry(active)
+                if target is None:
+                    target = active
+        payload["active_tool"] = active_entry
+
+        params = []
+        center = None
+        if target is not None:
+            entry = self._tool_entry(target)
+            payload["tool"] = entry
+            for param in sorted(FUSION_PARAM_MAP.get(entry["type"], {})):
+                low, high, default, _step = FUSION_PARAM_MAP[entry["type"]][param]
+                value = safe_call(lambda p=param: target.GetInput(p))
+                params.append({
+                    "id": param,
+                    "value": float(value) if isinstance(value, (int, float)) else None,
+                    "min": low,
+                    "max": high,
+                    "default": default,
+                })
+            center_input = FUSION_XY_MAP.get(entry["type"])
+            if center_input:
+                center = self._read_center(target, center_input)
+        else:
+            payload["tool"] = None
+        payload["params"] = params
+        payload["center"] = center
+        emit(payload)
+
+    def _process_fusion_batch(self, cmds):
+        """Apply one drained batch of knob/XY commands: coalesce per
+        (tool, param), one SetInput each, one fusion_state at the end. Runs
+        under self.lock via process_batch. Unmapped/non-numeric targets are
+        refused (logged), never set blind."""
+        deltas = {}      # (tool_name, param) -> summed ticks*speed
+        xy = {}          # tool_name -> [dx, dy]
+        resets = []      # (tool_name, param), arrival order
+        target_name = None
+        for cmd in cmds:
+            name = cmd.get("cmd")
+            tool_name = str(cmd.get("tool_name") or "").strip()
+            if not tool_name:
+                continue
+            target_name = tool_name
+            if name == "fusion_param_delta":
+                key = (tool_name, str(cmd.get("param") or ""))
+                amount = (cmd.get("ticks") or 0) * (cmd.get("speed") or 1.0)
+                deltas[key] = deltas.get(key, 0.0) + amount
+            elif name == "fusion_xy_delta":
+                vec = xy.setdefault(tool_name, [0.0, 0.0])
+                vec[0] += cmd.get("dx") or 0.0
+                vec[1] += cmd.get("dy") or 0.0
+            elif name == "fusion_param_reset":
+                key = (tool_name, str(cmd.get("param") or ""))
+                # A reset makes earlier deltas for the same param obsolete.
+                deltas.pop(key, None)
+                resets.append(key)
+        if not deltas and not xy and not resets:
+            return
+
+        resolve, _, item, _, comp, reason = self._fusion_objects()
+        if comp is None:
+            self._emit_fusion_state(resolve, item, None, reason=reason)
+            return
+
+        def rule_for(tool, param):
+            if tool is None:
+                return None
+            return FUSION_PARAM_MAP.get(self._tool_entry(tool)["type"], {}).get(param)
+
+        by_name = {}
+        for tool in self._fusion_tools(comp) or []:
+            by_name[self._tool_entry(tool)["name"]] = tool
+
+        for (tool_name, param), amount in deltas.items():
+            tool = by_name.get(tool_name)
+            rule = rule_for(tool, param)
+            if rule is None:
+                log("fusion delta ignored: %s.%s unmapped or tool missing"
+                    % (tool_name, param))
+                continue
+            low, high, _default, step = rule
+            current = safe_call(lambda t=tool, p=param: t.GetInput(p))
+            if not isinstance(current, (int, float)):
+                log("fusion delta refused: %s.%s value %r is not numeric"
+                    % (tool_name, param, current))
+                continue
+            value = clamped(float(current) + amount * step, (low, high))
+            try:
+                tool.SetInput(param, value)
+            except Exception as exc:
+                log("SetInput %s.%s failed: %s" % (tool_name, param, exc))
+
+        for tool_name, vec in xy.items():
+            tool = by_name.get(tool_name)
+            center_input = (FUSION_XY_MAP.get(self._tool_entry(tool)["type"])
+                            if tool is not None else None)
+            if center_input is None:
+                log("fusion xy ignored: %s has no mapped point input" % tool_name)
+                continue
+            current = self._read_center(tool, center_input)
+            if current is None:
+                log("fusion xy refused: %s.%s is not a readable point"
+                    % (tool_name, center_input))
+                continue
+            point = [clamped(current[0] + vec[0], CLAMP_FUSION_CENTER),
+                     clamped(current[1] + vec[1], CLAMP_FUSION_CENTER)]
+            try:
+                tool.SetInput(center_input, point)
+            except Exception as exc:
+                log("SetInput %s.%s failed: %s" % (tool_name, center_input, exc))
+
+        for tool_name, param in resets:
+            tool = by_name.get(tool_name)
+            if tool is None:
+                continue
+            rule = rule_for(tool, param)
+            center_input = FUSION_XY_MAP.get(self._tool_entry(tool)["type"])
+            try:
+                if rule is not None:
+                    tool.SetInput(param, rule[2])
+                elif center_input and param == center_input:
+                    tool.SetInput(center_input, list(FUSION_CENTER_DEFAULT))
+                else:
+                    log("fusion reset ignored: %s.%s unmapped" % (tool_name, param))
+            except Exception as exc:
+                log("reset SetInput %s.%s failed: %s" % (tool_name, param, exc))
+
+        self._emit_fusion_state(resolve, item, comp,
+                                tool=by_name.get(target_name))
+
+    def _fusion_cmd_status(self, cmd):
+        """fusion_state on demand (tab appear, poll, after client actions)."""
+        resolve, _, item, _, comp, reason = self._fusion_objects()
+        tool = None
+        tool_name = str(cmd.get("tool_name") or "").strip()
+        if tool_name and comp is not None:
+            tool = self._fusion_tool_by_name(comp, tool_name)
+        self._emit_fusion_state(resolve, item, comp, tool=tool, reason=reason)
+
+    def _fusion_cmd_add_tool(self, cmd):
+        """Production tool grid: allowlisted AddTool + best-effort select,
+        then a fresh fusion_state targeting the new tool."""
+        if not self._require_confirm(cmd):
+            return
+        tool_id = str(cmd.get("tool_id") or "").strip()
+        if tool_id not in FUSION_ADD_TOOL_IDS:
+            emit_fusion_result(
+                "fusion_add_tool", False, reason="tool_not_allowlisted",
+                message="%s is not in the Fusion tool allowlist" % (tool_id or "?"))
+            return
+        resolve, _, item, _, comp, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_add_tool", False, reason="no_resolve",
+                               message=reason)
+            return
+        if comp is None:
+            emit_fusion_result("fusion_add_tool", False, reason="no_comp",
+                               message=reason or "No Fusion comp available")
+            return
+        if not has_method(comp, "AddTool"):
+            emit_fusion_result("fusion_add_tool", False, reason="unsupported",
+                               message="AddTool is unavailable on this comp")
+            return
+        tool = comp.AddTool(tool_id)
+        ok = tool is not None
+        log("fusion_add_tool: %s ok=%s" % (tool_id, ok))
+        if ok and has_method(comp, "SetActiveTool"):
+            safe_call(lambda: comp.SetActiveTool(tool))
+        emit_fusion_result(
+            "fusion_add_tool", ok,
+            message="Added %s" % tool_id if ok
+                    else "Resolve refused to add %s (id may be wrong on this "
+                         "version — please report)" % tool_id,
+            reason=None if ok else "resolve_error",
+            details={"tool": self._tool_entry(tool) if ok else None})
+        self._emit_fusion_state(resolve, item, comp, tool=tool if ok else None)
+
+    def _fusion_cmd_select_tool(self, cmd):
+        """Best-effort SetActiveTool so Resolve's UI follows the iPad; the
+        iPad never depends on it (params are name-targeted)."""
+        tool_name = str(cmd.get("tool_name") or "").strip()
+        resolve, _, item, _, comp, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_select_tool", False, reason="no_resolve",
+                               message=reason)
+            return
+        if comp is None:
+            emit_fusion_result("fusion_select_tool", False, reason="no_comp",
+                               message=reason or "No Fusion comp available")
+            return
+        tool = self._fusion_tool_by_name(comp, tool_name)
+        if tool is None:
+            emit_fusion_result("fusion_select_tool", False, reason="tool_not_found",
+                               message="No tool named %r in the comp" % tool_name)
+            return
+        if has_method(comp, "SetActiveTool"):
+            safe_call(lambda: comp.SetActiveTool(tool))
+            emit_fusion_result("fusion_select_tool", True,
+                               message="Selected %s" % tool_name)
+        else:
+            emit_fusion_result(
+                "fusion_select_tool", False, reason="unsupported",
+                message="SetActiveTool is unavailable; iPad-side selection still works")
+        self._emit_fusion_state(resolve, item, comp, tool=tool)
+
+    def _fusion_cmd_load_comp(self, cmd):
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_load_comp", False, reason="no_resolve",
+                               message=reason)
+            return
+        if item is None:
+            emit_fusion_result("fusion_load_comp", False, reason="no_clip",
+                               message=reason)
+            return
+        names = self._fusion_comp_names(item) or []
+        try:
+            index = int(cmd.get("index"))
+        except (TypeError, ValueError):
+            index = 0
+        if index < 1 or index > len(names):
+            emit_fusion_result(
+                "fusion_load_comp", False, reason="invalid_index",
+                message="No comp at index %s (clip has %d)" % (cmd.get("index"), len(names)))
+            return
+        if not has_method(item, "LoadFusionCompByName"):
+            emit_fusion_result("fusion_load_comp", False, reason="unsupported",
+                               message="LoadFusionCompByName is unavailable")
+            return
+        loaded = item.LoadFusionCompByName(names[index - 1])
+        ok = loaded is not None
+        log("fusion_load_comp: %r ok=%s" % (names[index - 1], ok))
+        emit_fusion_result(
+            "fusion_load_comp", ok,
+            message="Loaded %r" % names[index - 1] if ok
+                    else "Resolve refused to load the comp",
+            reason=None if ok else "resolve_error",
+            details={"comp_names": names})
+        resolve2, _, item2, _, comp2, _ = self._fusion_objects()
+        self._emit_fusion_state(resolve2, item2, comp2)
+
+    def _fusion_cmd_delete_comp(self, cmd):
+        """The one destructive comp action — requires confirm:true (the iPad
+        additionally shows a real confirmation dialog)."""
+        if not self._require_confirm(cmd):
+            return
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_delete_comp", False, reason="no_resolve",
+                               message=reason)
+            return
+        if item is None:
+            emit_fusion_result("fusion_delete_comp", False, reason="no_clip",
+                               message=reason)
+            return
+        names = self._fusion_comp_names(item) or []
+        try:
+            index = int(cmd.get("index"))
+        except (TypeError, ValueError):
+            index = 0
+        if index < 1 or index > len(names):
+            emit_fusion_result(
+                "fusion_delete_comp", False, reason="invalid_index",
+                message="No comp at index %s (clip has %d)" % (cmd.get("index"), len(names)))
+            return
+        if not has_method(item, "DeleteFusionCompByName"):
+            emit_fusion_result("fusion_delete_comp", False, reason="unsupported",
+                               message="DeleteFusionCompByName is unavailable")
+            return
+        ok = bool(item.DeleteFusionCompByName(names[index - 1]))
+        log("fusion_delete_comp: %r ok=%s" % (names[index - 1], ok))
+        emit_fusion_result(
+            "fusion_delete_comp", ok,
+            message="Deleted %r" % names[index - 1] if ok
+                    else "Resolve refused the delete",
+            reason=None if ok else "resolve_error",
+            details={"comp_names": self._fusion_comp_names(item)})
+        resolve2, _, item2, _, comp2, _ = self._fusion_objects()
+        self._emit_fusion_state(resolve2, item2, comp2)
+
+    def _fusion_cmd_list_comp_files(self, cmd):
+        """Fresh COMPS_DIR scan (folder is the source of truth, like Looks)."""
+        try:
+            files = sorted(
+                os.path.splitext(entry)[0]
+                for entry in os.listdir(COMPS_DIR)
+                if entry.lower().endswith(".comp") and not entry.startswith(".")
+            )
+        except OSError as exc:
+            log("could not scan %s: %s" % (COMPS_DIR, exc))
+            files = []
+        emit({"v": 1, "type": "fusion_comp_files", "files": files})
+
+    def _fusion_cmd_import_comp_file(self, cmd):
+        """Import a preset .comp from COMPS_DIR by basename (the MACROS
+        chips). Traversal-guarded; the file must already be in the folder."""
+        if not self._require_confirm(cmd):
+            return
+        name = str(cmd.get("name") or "").strip()
+        if not name or os.path.basename(name) != name:
+            emit_fusion_result("fusion_import_comp_file", False,
+                               reason="invalid_path",
+                               message="name must be a bare .comp basename")
+            return
+        path = os.path.join(COMPS_DIR, name + ".comp")
+        if not os.path.isfile(path):
+            emit_fusion_result("fusion_import_comp_file", False,
+                               reason="invalid_path",
+                               message="No %s.comp in %s" % (name, COMPS_DIR))
+            return
+        resolve, _, item, _, _, reason = self._fusion_objects()
+        if resolve is None:
+            emit_fusion_result("fusion_import_comp_file", False,
+                               reason="no_resolve", message=reason)
+            return
+        if item is None:
+            emit_fusion_result("fusion_import_comp_file", False,
+                               reason="no_clip", message=reason)
+            return
+        if not has_method(item, "ImportFusionComp"):
+            emit_fusion_result("fusion_import_comp_file", False,
+                               reason="unsupported",
+                               message="ImportFusionComp is unavailable")
+            return
+        comp = item.ImportFusionComp(path)
+        ok = comp is not None
+        log("fusion_import_comp_file: %s ok=%s" % (name, ok))
+        emit_fusion_result(
+            "fusion_import_comp_file", ok,
+            message="Imported %s" % name if ok else "Resolve refused the import",
+            reason=None if ok else "resolve_error",
+            details={"comp_count": self._fusion_comp_count(item),
+                     "comp_names": self._fusion_comp_names(item)})
+        resolve2, _, item2, _, comp2, _ = self._fusion_objects()
+        self._emit_fusion_state(resolve2, item2, comp2)
+
     # -- bypass (hold-to-compare) -------------------------------------------
 
     def handle_bypass(self, enabled):
@@ -1273,6 +1738,13 @@ class ColorEngine:
                 self.send_preset_list()
             else:
                 remaining.append(cmd)
+        # Fusion knob/XY ticks (Phase 17) share the 30Hz batch cadence but
+        # have their own coalescing + apply path; they must never fall into
+        # the colour no-context handling below.
+        fusion_cmds = [c for c in remaining if c.get("mode") == "fusion"]
+        if fusion_cmds:
+            remaining = [c for c in remaining if c.get("mode") != "fusion"]
+            self._process_fusion_batch(fusion_cmds)
         if not remaining:
             return
 
@@ -1683,8 +2155,12 @@ def main():
                 # The one mutating Fusion action this phase; instant, off
                 # the colour batch.
                 engine.handle_open_fusion_page(cmd)
+            elif cmd.get("mode") == "fusion" and cmd.get("cmd") in FUSION_BATCHED_CMDS:
+                # Live knob/XY ticks (Phase 17): rate-limited + coalesced
+                # on the batch worker, like the colour deltas.
+                commands.put(cmd)
             elif cmd.get("mode") == "fusion":
-                # Phase 16 smoke-test actions: immediate, guarded
+                # Fusion actions (Phases 16/17): immediate, guarded
                 # (confirm:true) and allowlisted inside the dispatcher.
                 engine.handle_fusion_action(cmd)
             else:
@@ -1699,6 +2175,11 @@ def main():
         log("looks folder: %s" % LOOKS_DIR)
     except OSError as exc:
         log("could not create looks folder %s: %s" % (LOOKS_DIR, exc))
+    try:
+        os.makedirs(COMPS_DIR, exist_ok=True)
+        log("comps folder: %s" % COMPS_DIR)
+    except OSError as exc:
+        log("could not create comps folder %s: %s" % (COMPS_DIR, exc))
     # Report initial availability without blocking startup on Resolve.
     if engine.session.connect():
         log("connected to Resolve")

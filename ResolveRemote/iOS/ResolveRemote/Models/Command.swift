@@ -142,6 +142,50 @@ enum FeatureStatus: String {
     }
 }
 
+/// Phase 17 — live Fusion surface state (type: "fusion_state"), the Fusion
+/// analogue of ColorState. Sent for fusion_status and after every applied
+/// knob/XY batch. `tool` is the parameter target (the iPad-selected tool or
+/// the comp's active tool); `center` is present only when the tool has a
+/// mapped XY input, and gates the XY pad.
+struct FusionState: Decodable, Equatable {
+    let available: Bool?
+    let reason: String?
+    let current_page: String?
+    let clip: String?
+    let comp_count: Int?
+    let comp_names: [String]?
+    let active_tool: FusionTool?
+    let tool: FusionTool?
+    let params: [FusionParam]?
+    let center: [Double]?
+}
+
+struct FusionTool: Decodable, Equatable {
+    let name: String?
+    let type: String?
+}
+
+/// One curated controllable parameter. `defaultValue` maps the wire field
+/// "default" (a Swift keyword).
+struct FusionParam: Decodable, Equatable, Identifiable {
+    let id: String
+    let value: Double?
+    let min: Double?
+    let max: Double?
+    let defaultValue: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, value, min, max
+        case defaultValue = "default"
+    }
+}
+
+/// Reply to fusion_list_comp_files: .comp preset names in the Mac's
+/// ~/ResolveRemote/Comps folder.
+struct FusionCompFiles: Decodable {
+    let files: [String]?
+}
+
 /// Shared gating helpers for any probe result carrying a features map
 /// (CapabilityState, FusionCapabilityState).
 protocol FeatureReporting {
@@ -222,4 +266,18 @@ enum CommandName {
     static let fusionAddToolTest = "fusion_add_tool_test"
     static let fusionSetInputTest = "fusion_set_input_test"
     static let fusionDeleteCompStatus = "fusion_delete_comp_status"
+
+    // Fusion control surface (mode: "fusion") — Phase 17. Param/XY deltas
+    // and resets are coalesced on the sidecar's 30Hz batch worker; the rest
+    // answer instantly. Delete requires confirm + a real UI dialog.
+    static let fusionStatus = "fusion_status"
+    static let fusionAddTool = "fusion_add_tool"
+    static let fusionSelectTool = "fusion_select_tool"
+    static let fusionParamDelta = "fusion_param_delta"
+    static let fusionXYDelta = "fusion_xy_delta"
+    static let fusionParamReset = "fusion_param_reset"
+    static let fusionLoadComp = "fusion_load_comp"
+    static let fusionDeleteComp = "fusion_delete_comp"
+    static let fusionListCompFiles = "fusion_list_comp_files"
+    static let fusionImportCompFile = "fusion_import_comp_file"
 }

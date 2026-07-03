@@ -133,11 +133,11 @@ struct FusionSmokeTestView: View {
 
     private var pathsCard: some View {
         card("EXPORT / IMPORT (explicit paths only)") {
-            pathField("Export path (.comp) — empty tests the missing-path error", text: $exportPath)
+            pathField("Export path (.comp) — empty auto-names into ~/ResolveRemote/Comps", text: $exportPath)
             smokeButton("Export Comp") {
                 connection.send(cmd: CommandName.fusionExportComp, mode: "fusion",
                                 exportPath: exportPath)
-                note(exportPath.isEmpty ? "sent fusion_export_comp with no path (expect error)"
+                note(exportPath.isEmpty ? "sent fusion_export_comp (auto-named into the comps folder)"
                                         : "sent fusion_export_comp")
             }
 
