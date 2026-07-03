@@ -10,12 +10,8 @@ struct iPadColourModeView: View {
     @EnvironmentObject private var connection: RemoteConnection
     var onBlocked: (String) -> Void
 
-    @State private var target: PadColourTarget = .lift
     @State private var speed: Double = 1.0
     @State private var comparing = false
-
-    /// Mock parity: the wheel pages LIFT/GAMMA/GAIN; SAT stays a wired knob.
-    private let wheelTargets: [PadColourTarget] = [.lift, .gamma, .gain]
 
     private var caps: CapabilityState? { connection.capabilityState }
     private var cdlStatus: FeatureStatus { caps.status(for: "cdl") }
@@ -24,12 +20,16 @@ struct iPadColourModeView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            primaryPanel
+
             HStack(alignment: .top, spacing: 12) {
-                primaryPanel
-                    .frame(width: 470)
+                PadPanel(title: "ADJUSTMENTS") {
+                    adjustmentsGrid
+                }
+                .frame(maxWidth: .infinity)
 
                 rightColumn
-                    .frame(maxWidth: .infinity)
+                    .frame(width: 420)
             }
             .frame(maxHeight: .infinity, alignment: .top)
 
@@ -73,45 +73,33 @@ struct iPadColourModeView: View {
         }
     }
 
-    // MARK: - Left: PRIMARY panel
+    // MARK: - PRIMARY panel — the three grading wheels, side by side
 
     private var primaryPanel: some View {
-        PadPanel(title: "PRIMARY") {
-            VStack(spacing: 12) {
-                HStack(spacing: 8) {
-                    targetSelector
-                    speedChip
-                }
-
-                PrimaryColourWheelView(target: target, speed: speed, cdlStatus: cdlStatus)
-
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    /// Mock-style: the selected segment is always the green accent.
-    private var targetSelector: some View {
-        HStack(spacing: 8) {
-            ForEach(wheelTargets, id: \.self) { candidate in
-                Button {
-                    if target != candidate {
-                        HapticsEngine.shared.directionChange()
-                        withAnimation(.easeInOut(duration: 0.2)) { target = candidate }
+        PadPanel(title: "PRIMARY", centered: true) {
+            ZStack {
+                HStack(alignment: .top, spacing: 20) {
+                    ForEach([PadColourTarget.lift, .gamma, .gain], id: \.self) { wheel in
+                        PrimaryColourWheelView(
+                            target: wheel,
+                            speed: speed,
+                            cdlStatus: cdlStatus,
+                            wheelSize: 210,
+                            showsGate: false
+                        )
+                        .frame(maxWidth: .infinity)
                     }
-                } label: {
-                    TrackedLabel(
-                        text: candidate.label,
-                        size: 10,
-                        color: target == candidate ? .black : Theme.textSecondary
-                    )
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 34)
-                    .background(target == candidate ? Theme.colorAccent : Theme.surfaceRaised)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .buttonStyle(.plain)
+
+                // One gate overlay for the whole row (the wheels themselves
+                // are disabled + dimmed while not live).
+                if !isLive {
+                    ColourGateOverlay(cdlStatus: cdlStatus,
+                                      reason: colorState?.reason)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                speedChip
             }
         }
     }
@@ -142,10 +130,6 @@ struct iPadColourModeView: View {
 
     private var rightColumn: some View {
         VStack(spacing: 12) {
-            PadPanel(title: "ADJUSTMENTS") {
-                adjustmentsGrid
-            }
-
             PadPanel(title: "NODE & CLIP") {
                 nodeStepper
                 nodeClipRow

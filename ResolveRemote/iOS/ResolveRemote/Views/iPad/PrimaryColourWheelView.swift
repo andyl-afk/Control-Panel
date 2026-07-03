@@ -33,6 +33,12 @@ struct PrimaryColourWheelView: View {
     let target: PadColourTarget
     var speed: Double = 1.0
     var cdlStatus: FeatureStatus = .missing
+    /// Wheel diameter — 340 solo (iPhone-era layout), ~200 in the iPad
+    /// three-across PRIMARY panel.
+    var wheelSize: CGFloat = 340
+    /// The tri-wheel panel shows ONE gate overlay at panel level instead of
+    /// three copies; it passes false here.
+    var showsGate: Bool = true
 
     /// Mirrors the sidecar step constants (resolve_bridge.py) so the cap
     /// line tracks 1:1, exactly like the iPhone colour dial.
@@ -51,29 +57,23 @@ struct PrimaryColourWheelView: View {
     private var isLive: Bool { cdlStatus == .supported && colorState?.available == true }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             ZStack {
-                Circle()
-                    .fill(target.accent)
-                    .blur(radius: 80)
-                    .opacity(0.05)
-                    .scaleEffect(1.25)
-
                 DialView(
+                    face: .fluted, // the matte hardware wheel (product photo)
                     speed: 1.0, // slider speed travels in the command instead
                     accent: target.accent,
-                    ringHue: true, // the mockup's colour-sweep ring
                     indicatorAngle: indicatorAngle,
                     balance: target == .sat ? nil : currentBalance,
                     onTicks: sendTicks,
                     onBalance: balanceHandler,
                     onBalanceDoubleTap: balanceDoubleTapHandler
                 )
-                .frame(width: 340, height: 340)
+                .frame(width: wheelSize, height: wheelSize)
                 .opacity(isLive ? 1 : 0.4)
                 .disabled(!isLive)
 
-                if !isLive {
+                if showsGate, !isLive {
                     gateOverlay
                 }
             }
@@ -93,9 +93,10 @@ struct PrimaryColourWheelView: View {
             connection.send(cmd: CommandName.colorReset, mode: "color", target: target.rawValue)
         } label: {
             Image(systemName: "arrow.counterclockwise")
-                .font(.footnote)
+                .font(.system(size: wheelSize > 260 ? 13 : 10))
                 .foregroundColor(Theme.textSecondary)
-                .frame(width: 44, height: 44)
+                .frame(width: wheelSize > 260 ? 44 : 32,
+                       height: wheelSize > 260 ? 44 : 32)
                 .background(Theme.surface)
                 .clipShape(Circle())
                 .overlay(Circle().strokeBorder(Theme.stroke, lineWidth: 1))
@@ -107,47 +108,16 @@ struct PrimaryColourWheelView: View {
     // MARK: - Gate overlay
 
     private var gateOverlay: some View {
-        VStack(spacing: 6) {
-            Text(gateTitle)
-                .font(.subheadline.bold())
-                .foregroundColor(Theme.textPrimary)
-            Text(gateDetail)
-                .font(.caption)
-                .foregroundColor(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(16)
-        .background(Theme.surface.opacity(0.95))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.stroke, lineWidth: 1))
-    }
-
-    private var gateTitle: String {
-        switch cdlStatus {
-        case .supported:         return "Colour unavailable"
-        case .unsupported, .error: return "CDL unavailable"
-        case .unknown, .missing: return "CDL unknown"
-        }
-    }
-
-    private var gateDetail: String {
-        switch cdlStatus {
-        case .supported:
-            return colorState?.reason ?? "Waiting for colour status from the helper…"
-        case .unsupported, .error:
-            return "This Resolve doesn't expose SetCDL to scripting."
-        case .unknown, .missing:
-            return "Probe Resolve (Settings → Diagnostics) to confirm CDL support."
-        }
+        ColourGateOverlay(cdlStatus: cdlStatus, reason: colorState?.reason)
     }
 
     // MARK: - Readout + reset
 
     private var readoutRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             TrackedLabel(text: target.label, size: 10, color: target.accent)
             Text(currentValue.map { String(format: "%.3f", $0) } ?? "—")
-                .font(.system(size: 24, weight: .medium).monospacedDigit())
+                .font(.system(size: wheelSize > 260 ? 24 : 17, weight: .medium).monospacedDigit())
                 .foregroundColor(Theme.textPrimary)
         }
     }
@@ -256,5 +226,47 @@ struct PrimaryColourWheelView: View {
             dx: -Double(balance.x),
             dy: -Double(balance.y)
         )
+    }
+}
+
+/// The honest "why the wheels are disabled" card — shared by the solo wheel
+/// and the tri-wheel PRIMARY panel (which shows one for the whole row).
+struct ColourGateOverlay: View {
+    let cdlStatus: FeatureStatus
+    let reason: String?
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(title)
+                .font(.subheadline.bold())
+                .foregroundColor(Theme.textPrimary)
+            Text(detail)
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(16)
+        .background(Theme.surface.opacity(0.95))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.stroke, lineWidth: 1))
+    }
+
+    private var title: String {
+        switch cdlStatus {
+        case .supported:           return "Colour unavailable"
+        case .unsupported, .error: return "CDL unavailable"
+        case .unknown, .missing:   return "CDL unknown"
+        }
+    }
+
+    private var detail: String {
+        switch cdlStatus {
+        case .supported:
+            return reason ?? "Waiting for colour status from the helper…"
+        case .unsupported, .error:
+            return "This Resolve doesn't expose SetCDL to scripting."
+        case .unknown, .missing:
+            return "Waiting for the connection probe to confirm CDL support."
+        }
     }
 }

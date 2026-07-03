@@ -21,7 +21,17 @@ struct DialView: View {
         case vertical
     }
 
+    /// Visual face. `.machined` is the original accent-ring hardware look;
+    /// `.fluted` is the matte black wheel from the product photo — recessed
+    /// well, fine fluted grip ring, big smooth cap with a dimple indicator,
+    /// deep soft shadows, no accent ring. Gestures are identical.
+    enum Face {
+        case machined
+        case fluted
+    }
+
     var style: InteractionStyle = .rotary
+    var face: Face = .machined
     var mode: WheelMode = .jog
     /// Detent sensitivity multiplier (Edit tab's speed slider).
     var speed: Double = 1.0
@@ -56,8 +66,9 @@ struct DialView: View {
     private let textureFullSpeed: Double = 12
     /// Two-finger rotation: degrees per master tick.
     private let rotationDegreesPerTick: Double = 2.0
-    /// The cap (trackball area) radius as a fraction of dial size.
-    private let capFraction: CGFloat = 0.55
+    /// The cap (trackball area) radius as a fraction of dial size. The
+    /// fluted face has a visibly bigger cap, so the trackball area follows.
+    private var capFraction: CGFloat { face == .fluted ? 0.62 : 0.55 }
 
     private enum GesturePhase {
         case undecided
@@ -86,8 +97,14 @@ struct DialView: View {
     var body: some View {
         GeometryReader { geo in
             let size = min(geo.size.width, geo.size.height)
-            dialFace(size: size)
-                .frame(width: size, height: size)
+            Group {
+                if face == .fluted {
+                    flutedFace(size: size)
+                } else {
+                    dialFace(size: size)
+                }
+            }
+            .frame(width: size, height: size)
                 .contentShape(Circle())
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 .gesture(
@@ -283,6 +300,120 @@ struct DialView: View {
                 .offset(y: -size * (ringHue ? 0.472 : (isLarge ? 0.405 : 0.455)))
                 .shadow(color: (ringHue ? dotColor : accent).opacity(touched ? 1.0 : 0.8), radius: 3)
         }
+    }
+
+    /// The product-photo wheel: matte black, recessed well with a thin
+    /// bottom rim light, fine fluted grip ring, big domed cap with a
+    /// drilled-dimple indicator, deep soft shadows. Monochrome — the accent
+    /// colour only appears on the balance puck.
+    @ViewBuilder
+    private func flutedFace(size: CGFloat) -> some View {
+        let capSize = size * capFraction
+        let slats = 64
+
+        ZStack {
+            // Recessed well — darkest at the rim, thin light on the bottom lip.
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color(white: 0.085), Color(white: 0.055), Color(white: 0.03)],
+                        center: .center,
+                        startRadius: size * 0.28,
+                        endRadius: size * 0.52
+                    )
+                )
+                .shadow(color: .black.opacity(0.6), radius: size * 0.04, y: size * 0.02)
+            Circle()
+                .trim(from: 0.03, to: 0.47) // bottom arc (0 = 3 o'clock, clockwise)
+                .stroke(Color.white.opacity(0.28), lineWidth: 1.2)
+                .blur(radius: 0.6)
+                .padding(0.5)
+
+            // Fluted grip ring, ambient-occluded toward the bottom.
+            ZStack {
+                ForEach(0..<slats, id: \.self) { i in
+                    Capsule()
+                        .fill(Color(white: 0.22))
+                        .frame(width: max(1.2, size * 0.008), height: size * 0.115)
+                        .offset(y: -size * 0.385)
+                        .rotationEffect(.degrees(Double(i) / Double(slats) * 360))
+                }
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.black.opacity(0.0), Color.black.opacity(0.45)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .blendMode(.multiply)
+            }
+            .brightness(touched ? 0.05 : 0)
+
+            // Cap: big matte dome, top-lit, throwing a deep shadow onto the
+            // flutes beneath it.
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color(white: 0.165), Color(white: 0.115), Color(white: 0.075)],
+                            center: UnitPoint(x: 0.5, y: 0.32),
+                            startRadius: 0,
+                            endRadius: capSize * 0.75
+                        )
+                    )
+                    .overlay(
+                        Circle().strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.10), Color.white.opacity(0.0)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                    )
+                    .shadow(color: .black.opacity(0.75), radius: size * 0.05, y: size * 0.03)
+
+                // Dimple indicator near the cap's top edge — reads as a
+                // drilled recess; rotates with the master value.
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color(white: 0.045), Color(white: 0.085)],
+                            center: UnitPoint(x: 0.5, y: 0.4),
+                            startRadius: 0,
+                            endRadius: capSize * 0.13
+                        )
+                    )
+                    .overlay(
+                        Circle().strokeBorder(
+                            LinearGradient(
+                                colors: [Color.black.opacity(0.7), Color.white.opacity(0.10)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                    )
+                    .frame(width: capSize * 0.21, height: capSize * 0.21)
+                    .offset(y: -capSize * 0.285)
+                    .rotationEffect(.degrees(indicatorAngle ?? internalRotation))
+
+                // Balance puck — sidecar truth (trackball wheels only).
+                if onBalance != nil, let balance {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: capSize * 0.10, height: capSize * 0.10)
+                        .shadow(color: accent.opacity(0.9), radius: 3)
+                        .offset(
+                            x: balance.x * capSize * 0.5 * 0.8,
+                            y: -balance.y * capSize * 0.5 * 0.8
+                        )
+                }
+            }
+            .frame(width: capSize, height: capSize)
+        }
+        .compositingGroup()
     }
 
     // MARK: - Gestures
